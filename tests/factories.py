@@ -3,18 +3,37 @@ Test Factory to make fake objects for testing
 """
 
 import factory
-from service.models import YourResourceModel
+from factory.fuzzy import FuzzyChoice, FuzzyDecimal, FuzzyInteger
+from service.models import Shopcart, ShopcartItem
 
 
-class YourResourceModelFactory(factory.Factory):
-    """Creates fake pets that you don't have to feed"""
+class ShopcartFactory(factory.Factory):
+    """Creates fake Shopcarts for testing"""
 
     class Meta:  # pylint: disable=too-few-public-methods
         """Maps factory to data model"""
 
-        model = YourResourceModel
+        model = Shopcart
 
     id = factory.Sequence(lambda n: n)
-    name = factory.Faker("first_name")
+    customer_id = FuzzyInteger(1, 10000)
+    created_date = factory.Faker("date_time")
+    last_modified = factory.Faker("date_time")
+    status = FuzzyChoice(choices=["active", "abandoned", "completed"])
+    total_items = FuzzyInteger(0, 10)
 
-    # Todo: Add your other attributes here...
+
+class ShopcartItemFactory(factory.Factory):
+    """Creates fake ShopcartItems for testing"""
+
+    class Meta:  # pylint: disable=too-few-public-methods
+        """Maps factory to data model"""
+
+        model = ShopcartItem
+
+    id = factory.Sequence(lambda n: n)
+    shopcart_id = None  # Must be set manually or via relationship
+    product_id = FuzzyInteger(1, 1000)
+    description = factory.Faker("sentence", nb_words=5)
+    quantity = FuzzyInteger(1, 10)
+    price = FuzzyDecimal(0.99, 999.99, precision=2)
