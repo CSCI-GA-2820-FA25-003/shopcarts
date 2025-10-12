@@ -21,10 +21,46 @@ This service implements a REST API that allows you to Create, Read, Update
 and Delete Shopcarts
 """
 
+from decimal import Decimal
 from flask import jsonify, request, url_for, abort
 from flask import current_app as app  # Import Flask application
 from service.models import Shopcart, ShopcartItem
 from service.common import status  # HTTP Status Codes
+
+
+def serialize_shopcart_response(shopcart):
+    """Serializes a shopcart with calculated totals and camelCase keys"""
+    items = []
+    total_quantity = 0
+    total_price = Decimal("0")
+
+    for item in shopcart.items:
+        quantity = item.quantity or 0
+        price = item.price or Decimal("0")
+        total_quantity += quantity
+        total_price += price * quantity
+        items.append(
+            {
+                "productId": item.product_id,
+                "description": item.description,
+                "quantity": quantity,
+                "price": float(price),
+            }
+        )
+
+    return {
+        "customerId": shopcart.customer_id,
+        "createdDate": shopcart.created_date.isoformat()
+        if shopcart.created_date
+        else None,
+        "lastModified": shopcart.last_modified.isoformat()
+        if shopcart.last_modified
+        else None,
+        "status": shopcart.status,
+        "totalItems": total_quantity,
+        "totalPrice": float(total_price),
+        "items": items,
+    }
 
 
 ######################################################################
@@ -67,7 +103,9 @@ def create_shopcarts():
     app.logger.info("Shopcart with new id [%s] saved!", shopcart.id)
 
     # Return the location of the new Shopcart
-    location_url = url_for("get_shopcarts", shopcart_id=shopcart.id, _external=True)
+    location_url = url_for(
+        "get_shopcarts", customer_id=shopcart.customer_id, _external=True
+    )
 
     return (
         jsonify(shopcart.serialize()),
@@ -77,27 +115,66 @@ def create_shopcarts():
 
 
 ######################################################################
-# READ A SHOPCART
+# READ A SHOPCART (Customer)
 ######################################################################
-@app.route("/shopcarts/<int:shopcart_id>", methods=["GET"])
-def get_shopcarts(shopcart_id):
+@app.route("/shopcarts/<int:customer_id>", methods=["GET"])
+def get_shopcarts(customer_id):
     """
-    Retrieve a single Shopcart
+    Retrieve a single Shopcart for the given customer
+    """
+    app.logger.info("Request to Retrieve shopcart for customer [%s]", customer_id)
 
-    This endpoint will return a Shopcart based on it's id
-    """
-    app.logger.info("Request to Retrieve a shopcart with id [%s]", shopcart_id)
+    header_customer = request.headers.get("X-Customer-ID")
+    if header_customer is None:
+        abort(status.HTTP_401_UNAUTHORIZED, "Authentication required")
+
+    try:
+        requesting_customer = int(header_customer)
+    except ValueError as error:
+        abort(status.HTTP_400_BAD_REQUEST, f"Invalid customer id header: {error}")
+
+    if requesting_customer != customer_id:
+        abort(
+            status.HTTP_403_FORBIDDEN,
+            "You are not allowed to view another customer's shopcart.",
+        )
 
     # Attempt to find the Shopcart and abort if not found
-    shopcart = Shopcart.find(shopcart_id)
+    shopcart = Shopcart.find_by_customer_id(customer_id).first()
     if not shopcart:
         abort(
             status.HTTP_404_NOT_FOUND,
-            f"Shopcart with id '{shopcart_id}' was not found.",
+            f"Shopcart for customer '{customer_id}' was not found.",
         )
 
-    app.logger.info("Returning shopcart: %s", shopcart.id)
-    return jsonify(shopcart.serialize()), status.HTTP_200_OK
+    response = serialize_shopcart_response(shopcart)
+    app.logger.info("Returning shopcart for customer: %s", customer_id)
+    return jsonify(response), status.HTTP_200_OK
+
+
+######################################################################
+# READ A SHOPCART (Admin)
+######################################################################
+@app.route("/admin/shopcarts/<int:customer_id>", methods=["GET"])
+def admin_get_shopcart(customer_id):
+    """
+    Retrieve any customer's shopcart for admin users
+    """
+    app.logger.info("Admin request to Retrieve shopcart for customer [%s]", customer_id)
+
+    role = request.headers.get("X-Role")
+    if role != "admin":
+        abort(status.HTTP_403_FORBIDDEN, "Admin privileges required.")
+
+    shopcart = Shopcart.find_by_customer_id(customer_id).first()
+    if not shopcart:
+        abort(
+            status.HTTP_404_NOT_FOUND,
+            f"Shopcart for customer '{customer_id}' was not found.",
+        )
+
+    response = serialize_shopcart_response(shopcart)
+    return jsonify(response), status.HTTP_200_OK
 
 
 ######################################################################

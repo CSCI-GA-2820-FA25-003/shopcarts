@@ -22,10 +22,14 @@ TestShopcart API Service Test Suite
 import os
 import logging
 from unittest import TestCase
+from decimal import Decimal
 from wsgi import app
 from service.common import status
 from service.models import db, Shopcart, ShopcartItem
-from .factories import ShopcartFactory
+from .factories import ShopcartFactory, ShopcartItemFactory
+from service.common import error_handlers
+from service import routes
+from werkzeug.exceptions import HTTPException
 
 DATABASE_URI = os.getenv(
     "DATABASE_URI", "postgresql+psycopg://postgres:postgres@localhost:5432/testdb"
@@ -116,34 +120,106 @@ class TestYourResourceService(TestCase):
         self.assertEqual(new_shopcart["status"], test_shopcart.status)
         self.assertEqual(new_shopcart["total_items"], test_shopcart.total_items)
         self.assertIn("items", new_shopcart)
-        # Check that the location header was
-        response = self.client.get(location)
+        # Check that the location header works for customer view
+        response = self.client.get(
+            location, headers={"X-Customer-ID": str(test_shopcart.customer_id)}
+        )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         new_shopcart = response.get_json()
-        self.assertEqual(new_shopcart["customer_id"], test_shopcart.customer_id)
+        self.assertEqual(new_shopcart["customerId"], test_shopcart.customer_id)
         self.assertEqual(new_shopcart["status"], test_shopcart.status)
-        self.assertEqual(new_shopcart["total_items"], test_shopcart.total_items)
-        self.assertIn("items", new_shopcart)
+        self.assertEqual(new_shopcart["totalItems"], 0)
+        self.assertEqual(new_shopcart["totalPrice"], 0.0)
+        self.assertIsInstance(new_shopcart["items"], list)
 
     # ----------------------------------------------------------
     # TEST READ
     # ----------------------------------------------------------
     def test_get_shopcart(self):
         """It should Get a single Shopcart"""
-        # get the id of a shopcart
-        test_shopcart = self._create_shopcarts(1)[0]
-        response = self.client.get(f"{BASE_URL}/{test_shopcart.id}")
+        # Create a shopcart and items directly
+        shopcart = ShopcartFactory()
+        shopcart.create()
+        item = ShopcartItemFactory(
+            shopcart_id=shopcart.id,
+            product_id=111,
+            description="First item",
+            quantity=2,
+            price=Decimal("9.50"),
+        )
+        item.create()
+
+        response = self.client.get(
+            f"{BASE_URL}/{shopcart.customer_id}",
+            headers={"X-Customer-ID": str(shopcart.customer_id)},
+        )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.get_json()
-        self.assertEqual(data["id"], test_shopcart.id)
+        self.assertEqual(data["customerId"], shopcart.customer_id)
+        self.assertEqual(data["totalItems"], 2)
+        self.assertAlmostEqual(data["totalPrice"], 19.0, places=2)
+        self.assertEqual(len(data["items"]), 1)
+        self.assertEqual(data["items"][0]["productId"], 111)
 
     def test_get_shopcart_not_found(self):
         """It should not Get a Shopcart thats not found"""
-        response = self.client.get(f"{BASE_URL}/0")
+        response = self.client.get(
+            f"{BASE_URL}/0", headers={"X-Customer-ID": "0"}
+        )
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         data = response.get_json()
         logging.debug("Response data = %s", data)
         self.assertIn("was not found", data["message"])
+
+    def test_get_shopcart_requires_auth(self):
+        """It should require authentication header for customer read"""
+        shopcart = ShopcartFactory()
+        shopcart.create()
+        response = self.client.get(f"{BASE_URL}/{shopcart.customer_id}")
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_get_shopcart_forbidden(self):
+        """It should forbid customers from reading other carts"""
+        shopcart = ShopcartFactory()
+        shopcart.create()
+        response = self.client.get(
+            f"{BASE_URL}/{shopcart.customer_id}",
+            headers={"X-Customer-ID": str(shopcart.customer_id + 1)},
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_get_shopcart_invalid_header(self):
+        """It should reject non-integer customer headers"""
+        shopcart = ShopcartFactory()
+        shopcart.create()
+        response = self.client.get(
+            f"{BASE_URL}/{shopcart.customer_id}",
+            headers={"X-Customer-ID": "not-a-number"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_admin_get_shopcart(self):
+        """Admin should be able to view any cart"""
+        shopcart = ShopcartFactory()
+        shopcart.create()
+        response = self.client.get(
+            f"/admin{BASE_URL}/{shopcart.customer_id}", headers={"X-Role": "admin"}
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.get_json()
+        self.assertEqual(data["customerId"], shopcart.customer_id)
+
+    def test_admin_get_shopcart_forbidden(self):
+        """Non-admins should not access admin endpoint"""
+        response = self.client.get(f"/admin{BASE_URL}/1")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_admin_get_shopcart_not_found(self):
+        """Admins should receive 404 when cart missing"""
+        response = self.client.get(
+            f"/admin{BASE_URL}/9999", headers={"X-Role": "admin"}
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     # ----------------------------------------------------------
     # TEST DELETE
@@ -156,7 +232,10 @@ class TestYourResourceService(TestCase):
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertEqual(len(response.data), 0)
         # make sure they are deleted
-        response = self.client.get(f"{BASE_URL}/{test_shopcart.id}")
+        response = self.client.get(
+            f"{BASE_URL}/{test_shopcart.customer_id}",
+            headers={"X-Customer-ID": str(test_shopcart.customer_id)},
+        )
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_delete_non_existing_shopcart(self):
@@ -164,3 +243,47 @@ class TestYourResourceService(TestCase):
         response = self.client.delete(f"{BASE_URL}/0")
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertEqual(len(response.data), 0)
+
+    # ----------------------------------------------------------
+    # SUPPORT FUNCTIONS AND ERROR HANDLERS
+    # ----------------------------------------------------------
+
+    def test_check_content_type_missing_header(self):
+        """It should abort when Content-Type header is missing"""
+        with app.test_request_context("/shopcarts", method="POST"):
+            with self.assertRaises(HTTPException) as raised:
+                routes.check_content_type("application/json")
+        self.assertEqual(raised.exception.code, status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
+
+    def test_check_content_type_invalid(self):
+        """It should abort when Content-Type is incorrect"""
+        with app.test_request_context(
+            "/shopcarts",
+            method="POST",
+            headers={"Content-Type": "text/plain"},
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                routes.check_content_type("application/json")
+        self.assertEqual(raised.exception.code, status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
+
+    def test_error_handlers(self):
+        """It should format error responses correctly"""
+        resp, code = error_handlers.bad_request("bad request")
+        self.assertEqual(code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(resp.json["error"], "Bad Request")
+
+        resp, code = error_handlers.not_found("missing")
+        self.assertEqual(code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(resp.json["error"], "Not Found")
+
+        resp, code = error_handlers.method_not_supported("wrong method")
+        self.assertEqual(code, status.HTTP_405_METHOD_NOT_ALLOWED)
+        self.assertEqual(resp.json["error"], "Method not Allowed")
+
+        resp, code = error_handlers.mediatype_not_supported("bad media")
+        self.assertEqual(code, status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
+        self.assertEqual(resp.json["error"], "Unsupported media type")
+
+        resp, code = error_handlers.internal_server_error("boom")
+        self.assertEqual(code, status.HTTP_500_INTERNAL_SERVER_ERROR)
+        self.assertEqual(resp.json["error"], "Internal Server Error")

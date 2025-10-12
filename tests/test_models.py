@@ -23,6 +23,7 @@ import os
 import logging
 from decimal import Decimal
 from unittest import TestCase
+from unittest.mock import patch
 from wsgi import app
 from service.models import Shopcart, ShopcartItem, DataValidationError, db
 from .factories import ShopcartFactory, ShopcartItemFactory
@@ -221,6 +222,58 @@ class TestShopcartModel(TestCase):
         self.assertEqual(shopcart.items[0].product_id, 456)
         self.assertEqual(shopcart.items[0].quantity, 2)
 
+    def test_shopcart_repr(self):
+        """It should have a helpful representation"""
+        shopcart = ShopcartFactory()
+        representation = repr(shopcart)
+        self.assertIn(str(shopcart.customer_id), representation)
+
+    def test_shopcart_create_failure(self):
+        """It should raise DataValidationError when create fails"""
+        shopcart = ShopcartFactory()
+        with patch("service.models.db.session.commit", side_effect=Exception("DB error")):
+            with self.assertRaises(DataValidationError):
+                shopcart.create()
+        db.session.rollback()
+
+    def test_shopcart_update_failure(self):
+        """It should raise DataValidationError when update fails"""
+        shopcart = ShopcartFactory()
+        shopcart.create()
+        with patch("service.models.db.session.commit", side_effect=Exception("DB error")):
+            with self.assertRaises(DataValidationError):
+                shopcart.update()
+        db.session.rollback()
+
+    def test_shopcart_delete_failure(self):
+        """It should raise DataValidationError when delete fails"""
+        shopcart = ShopcartFactory()
+        shopcart.create()
+        with patch("service.models.db.session.commit", side_effect=Exception("DB error")):
+            with self.assertRaises(DataValidationError):
+                shopcart.delete()
+        db.session.rollback()
+
+    def test_shopcart_deserialize_bad_dates(self):
+        """It should raise DataValidationError for bad date formats"""
+        data = {
+            "customer_id": 1,
+            "created_date": "not-a-date",
+        }
+        shopcart = Shopcart()
+        self.assertRaises(DataValidationError, shopcart.deserialize, data)
+
+    def test_shopcart_deserialize_attribute_error(self):
+        """It should raise DataValidationError when payload lacks dict methods"""
+
+        class MissingGet(dict):
+            def get(self, *_args, **_kwargs):
+                raise AttributeError("get")
+
+        payload = MissingGet({"customer_id": 1, "status": "active"})
+        shopcart = Shopcart()
+        self.assertRaises(DataValidationError, shopcart.deserialize, payload)
+
 
 ######################################################################
 #  S H O P C A R T   I T E M   M O D E L   T E S T   C A S E S
@@ -402,6 +455,66 @@ class TestShopcartItemModel(TestCase):
         data = "this is not a dictionary"
         item = ShopcartItem()
         self.assertRaises(DataValidationError, item.deserialize, data)
+
+    def test_shopcart_item_repr(self):
+        """It should have a helpful representation"""
+        item = ShopcartItemFactory()
+        self.assertIn(str(item.product_id), repr(item))
+
+    def test_shopcart_item_create_failure(self):
+        """It should raise DataValidationError when item create fails"""
+        shopcart = ShopcartFactory()
+        shopcart.create()
+        item = ShopcartItemFactory(shopcart_id=shopcart.id)
+        with patch("service.models.db.session.commit", side_effect=Exception("DB item error")):
+            with self.assertRaises(DataValidationError):
+                item.create()
+        db.session.rollback()
+
+    def test_shopcart_item_update_failure(self):
+        """It should raise DataValidationError when item update fails"""
+        shopcart = ShopcartFactory()
+        shopcart.create()
+        item = ShopcartItemFactory(shopcart_id=shopcart.id)
+        item.create()
+        with patch("service.models.db.session.commit", side_effect=Exception("DB item error")):
+            with self.assertRaises(DataValidationError):
+                item.update()
+        db.session.rollback()
+
+    def test_shopcart_item_delete_failure(self):
+        """It should raise DataValidationError when item delete fails"""
+        shopcart = ShopcartFactory()
+        shopcart.create()
+        item = ShopcartItemFactory(shopcart_id=shopcart.id)
+        item.create()
+        with patch("service.models.db.session.commit", side_effect=Exception("DB item error")):
+            with self.assertRaises(DataValidationError):
+                item.delete()
+        db.session.rollback()
+
+    def test_shopcart_item_deserialize_attribute_error(self):
+        """It should raise DataValidationError when payload lacks dict methods"""
+
+        class MissingGet(dict):
+            def get(self, *_args, **_kwargs):
+                raise AttributeError("get")
+
+        payload = MissingGet(
+            {"product_id": 1, "quantity": 1, "price": Decimal("10.00")}
+        )
+        item = ShopcartItem()
+        self.assertRaises(DataValidationError, item.deserialize, payload)
+
+    def test_shopcart_item_deserialize_value_error(self):
+        """It should raise DataValidationError when price conversion fails"""
+        item = ShopcartItem()
+        with patch("service.models.Decimal", side_effect=ValueError("bad decimal")):
+            self.assertRaises(
+                DataValidationError,
+                item.deserialize,
+                {"product_id": 1, "quantity": 1, "price": "oops"},
+            )
 
     def test_cascade_delete(self):
         """It should cascade delete items when shopcart is deleted"""
