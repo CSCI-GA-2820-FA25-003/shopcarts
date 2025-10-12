@@ -116,30 +116,48 @@ class TestYourResourceService(TestCase):
         self.assertEqual(new_shopcart["status"], test_shopcart.status)
         self.assertEqual(new_shopcart["total_items"], test_shopcart.total_items)
         self.assertIn("items", new_shopcart)
-        # Todo: uncomment this code when get_shopcarts is implemented
         # Check that the location header was
-        # response = self.client.get(location)
-        # self.assertEqual(response.status_code, status.HTTP_200_OK)
-        # new_shopcart = response.get_json()
-        # self.assertEqual(new_shopcart["customer_id"], test_shopcart.customer_id)
-        # self.assertEqual(new_shopcart["status"], test_shopcart.status)
-        # self.assertEqual(new_shopcart["total_items"], test_shopcart.total_items)
-        # self.assertIn("items", new_shopcart)
+        response = self.client.get(location)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        new_shopcart = response.get_json()
+        self.assertEqual(new_shopcart["customer_id"], test_shopcart.customer_id)
+        self.assertEqual(new_shopcart["status"], test_shopcart.status)
+        self.assertEqual(new_shopcart["total_items"], test_shopcart.total_items)
+        self.assertIn("items", new_shopcart)
 
-        # ----------------------------------------------------------
-        # TEST DELETE
-        # ----------------------------------------------------------
+    # ----------------------------------------------------------
+    # TEST READ
+    # ----------------------------------------------------------
+    def test_get_shopcart(self):
+        """It should Get a single Shopcart"""
+        # get the id of a shopcart
+        test_shopcart = self._create_shopcarts(1)[0]
+        response = self.client.get(f"{BASE_URL}/{test_shopcart.id}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.get_json()
+        self.assertEqual(data["id"], test_shopcart.id)
 
-    # Todo: uncomment this code when get_shopcarts is implemented
-    # def test_delete_shopcart(self):
-    #     """It should Delete a Shopcart"""
-    #     test_shopcart = self._create_shopcarts(1)[0]
-    #     response = self.client.delete(f"{BASE_URL}/{test_shopcart.id}")
-    #     self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-    #     self.assertEqual(len(response.data), 0)
-    #     # make sure they are deleted
-    #     response = self.client.get(f"{BASE_URL}/{test_shopcart.id}")
-    #     self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+    def test_get_shopcart_not_found(self):
+        """It should not Get a Shopcart thats not found"""
+        response = self.client.get(f"{BASE_URL}/0")
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        data = response.get_json()
+        logging.debug("Response data = %s", data)
+        self.assertIn("was not found", data["message"])
+
+    # ----------------------------------------------------------
+    # TEST DELETE
+    # ----------------------------------------------------------
+
+    def test_delete_shopcart(self):
+        """It should Delete a Shopcart"""
+        test_shopcart = self._create_shopcarts(1)[0]
+        response = self.client.delete(f"{BASE_URL}/{test_shopcart.id}")
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(len(response.data), 0)
+        # make sure they are deleted
+        response = self.client.get(f"{BASE_URL}/{test_shopcart.id}")
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_delete_non_existing_shopcart(self):
         """It should Delete a Shopcart even if it doesn't exist"""
