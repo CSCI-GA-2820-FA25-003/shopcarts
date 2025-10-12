@@ -45,7 +45,7 @@ def index():
 
 
 ######################################################################
-# READ A PET
+# READ A SHOPCART
 ######################################################################
 @app.route("/shopcarts/<int:shopcart_id>", methods=["GET"])
 def get_shopcarts(shopcart_id):

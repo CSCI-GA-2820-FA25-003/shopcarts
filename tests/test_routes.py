@@ -118,7 +118,6 @@ class TestYourResourceService(TestCase):
         self.assertIn("items", new_shopcart)
 
         # Check that the location header was
-        # Todo: uncomment these code when get_shopcarts is implemented
         response = self.client.get(location)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         new_shopcart = response.get_json()
@@ -150,7 +149,6 @@ class TestYourResourceService(TestCase):
         # ----------------------------------------------------------
         # TEST DELETE
         # ----------------------------------------------------------
-        # Todo: uncomment these code when _create_shopcarts is implemented
         # def test_delete_shopcart(self):
         """It should Delete a Shopcart"""
         test_shopcart = self._create_shopcarts(1)[0]
