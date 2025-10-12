@@ -94,9 +94,27 @@ class TestYourResourceService(TestCase):
     ######################################################################
 
     def test_index(self):
-        """It should call the home page"""
+        """It should return service metadata at the root URL"""
         resp = self.client.get("/")
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+        # Verify JSON structure
+        data = resp.get_json()
+        self.assertIsNotNone(data)
+        self.assertIn("name", data)
+        self.assertIn("version", data)
+        self.assertIn("description", data)
+        self.assertIn("paths", data)
+
+        # Check key values
+        self.assertEqual(data["name"], "Shopcart REST API Service")
+        self.assertEqual(data["version"], "1.0.0")
+        self.assertTrue(data["description"].startswith("This service manages"))
+
+        # Verify paths section
+        paths = data["paths"]
+        self.assertIn("shopcarts", paths)
+        self.assertEqual(paths["shopcarts"], "/shopcarts")
 
     # Todo: Add your test cases here...
 
@@ -163,9 +181,7 @@ class TestYourResourceService(TestCase):
 
     def test_get_shopcart_not_found(self):
         """It should not Get a Shopcart thats not found"""
-        response = self.client.get(
-            f"{BASE_URL}/0", headers={"X-Customer-ID": "0"}
-        )
+        response = self.client.get(f"{BASE_URL}/0", headers={"X-Customer-ID": "0"})
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         data = response.get_json()
         logging.debug("Response data = %s", data)

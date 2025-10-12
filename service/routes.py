@@ -50,12 +50,12 @@ def serialize_shopcart_response(shopcart):
 
     return {
         "customerId": shopcart.customer_id,
-        "createdDate": shopcart.created_date.isoformat()
-        if shopcart.created_date
-        else None,
-        "lastModified": shopcart.last_modified.isoformat()
-        if shopcart.last_modified
-        else None,
+        "createdDate": (
+            shopcart.created_date.isoformat() if shopcart.created_date else None
+        ),
+        "lastModified": (
+            shopcart.last_modified.isoformat() if shopcart.last_modified else None
+        ),
         "status": shopcart.status,
         "totalItems": total_quantity,
         "totalPrice": float(total_price),
@@ -66,13 +66,18 @@ def serialize_shopcart_response(shopcart):
 ######################################################################
 # GET INDEX
 ######################################################################
-@app.route("/")
+@app.route("/", methods=["GET"])
 def index():
-    """Root URL response"""
-    return (
-        "Reminder: return some useful information in json format about the service here",
-        status.HTTP_200_OK,
-    )
+    """Return basic service metadata in JSON format"""
+    response = {
+        "description": "This service manages customer shopcarts and their items.",
+        "name": "Shopcart REST API Service",
+        "version": "1.0.0",
+        "paths": {
+            "shopcarts": "/shopcarts",
+        },
+    }
+    return jsonify(response), 200
 
 
 ######################################################################
