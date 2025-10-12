@@ -125,3 +125,24 @@ class TestYourResourceService(TestCase):
         # self.assertEqual(new_shopcart["status"], test_shopcart.status)
         # self.assertEqual(new_shopcart["total_items"], test_shopcart.total_items)
         # self.assertIn("items", new_shopcart)
+
+        # ----------------------------------------------------------
+        # TEST DELETE
+        # ----------------------------------------------------------
+
+    # Todo: uncomment this code when get_shopcarts is implemented
+    # def test_delete_shopcart(self):
+    #     """It should Delete a Shopcart"""
+    #     test_shopcart = self._create_shopcarts(1)[0]
+    #     response = self.client.delete(f"{BASE_URL}/{test_shopcart.id}")
+    #     self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+    #     self.assertEqual(len(response.data), 0)
+    #     # make sure they are deleted
+    #     response = self.client.get(f"{BASE_URL}/{test_shopcart.id}")
+    #     self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_delete_non_existing_shopcart(self):
+        """It should Delete a Shopcart even if it doesn't exist"""
+        response = self.client.delete(f"{BASE_URL}/0")
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(len(response.data), 0)
