@@ -224,3 +224,47 @@ def check_content_type(content_type) -> None:
         status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
         f"Content-Type must be {content_type}",
     )
+
+
+######################################################################
+# UPDATE A SHOPCART
+######################################################################
+@app.route("/shopcarts/<int:shopcart_id>", methods=["PUT", "PATCH"])
+def update_shopcart(shopcart_id: int):
+    """
+    Update the status of a shopcart
+    """
+    check_content_type("application/json")
+    shopcart = Shopcart.find(shopcart_id)
+    if not shopcart:
+        abort(
+            status.HTTP_404_NOT_FOUND,
+            f"Shopcart with id '{shopcart_id}' was not found.",
+        )
+    data = request.get_json() or {}
+    if "status" in data:
+        shopcart.status = str(data["status"])
+    items = data.get("items")
+    if items is not None:
+        shopcart.set_items(items)
+    shopcart.update()
+    return jsonify(shopcart.serialize()), status.HTTP_200_OK
+
+
+######################################################################
+# CHECKOUT A SHOPCART
+######################################################################
+@app.route("/shopcarts/<int:shopcart_id>/checkout", methods=["PUT", "PATCH"])
+def checkout_shopcart(shopcart_id: int):
+    """
+    Change the status to "completes" and refresh last_modified
+    """
+    shopcart = Shopcart.find(shopcart_id)
+    if not shopcart:
+        abort(
+            status.HTTP_404_NOT_FOUND,
+            f"Shopcart with id '{shopcart_id}' was not found.",
+        )
+    shopcart.status = "completed"
+    shopcart.update()
+    return jsonify(shopcart.serialize()), status.HTTP_200_OK

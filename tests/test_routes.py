@@ -261,6 +261,135 @@ class TestYourResourceService(TestCase):
         self.assertEqual(len(response.data), 0)
 
     # ----------------------------------------------------------
+    # TEST UPDATE
+    # ----------------------------------------------------------
+
+    def test_update_shopcart_add_one_item_to_empty(self):
+        """It should bulk-update an empty cart to contain one item with quantity=1"""
+        # Create an empty shopcart
+        payload = {"customer_id": 424242}
+        response = self.client.post(BASE_URL, json=payload)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        sc = response.get_json()
+        shopcart_id = sc["id"]
+        self.assertEqual(sc.get("total_items", 0), 0)
+
+        # Bulk update with one item (quantity=1)
+        update_body = {
+            "items": [
+                {
+                    "product_id": 1001,
+                    "quantity": 1,
+                    "price": 9.99,
+                    "description": "First item",
+                }
+            ]
+        }
+        response = self.client.put(f"{BASE_URL}/{shopcart_id}", json=update_body)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        after = response.get_json()
+
+        self.assertEqual(after["id"], shopcart_id)
+        self.assertEqual(after["total_items"], 1)
+        self.assertTrue(
+            any(i["product_id"] == 1001 and i["quantity"] == 1 for i in after["items"])
+        )
+
+    def test_update_shopcart_bulk_add_update_remove_items(self):
+        """It should support bulk add, update, and remove in one or multiple updates"""
+        # Create an empty shopcart
+        payload = {"customer_id": 737373}
+        response = self.client.post(BASE_URL, json=payload)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        sc = response.get_json()
+        shopcart_id = sc["id"]
+        self.assertEqual(sc.get("total_items", 0), 0)
+
+        # Add two products
+        body_add = {
+            "items": [
+                {"product_id": 2001, "quantity": 2, "price": 5.50},
+                {"product_id": 2002, "quantity": 3, "price": 1.25},
+            ]
+        }
+        response = self.client.patch(f"{BASE_URL}/{shopcart_id}", json=body_add)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        after_add = response.get_json()
+        self.assertEqual(after_add["total_items"], 5)
+
+        # Update one product and remove the other (quantity<=0 => remove)
+        body_update_remove = {
+            "items": [
+                {"product_id": 2001, "quantity": 4, "price": 5.50},  # 2 -> 4
+                {"product_id": 2002, "quantity": 0},  # remove
+            ]
+        }
+        response = self.client.put(f"{BASE_URL}/{shopcart_id}", json=body_update_remove)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        after = response.get_json()
+
+        # Now only product_id 2001 with quantity=4 should remain
+        self.assertEqual(after["total_items"], 4)
+        self.assertTrue(
+            any(i["product_id"] == 2001 and i["quantity"] == 4 for i in after["items"])
+        )
+        self.assertFalse(any(i["product_id"] == 2002 for i in after["items"]))
+
+    def test_checkout_sets_completed_and_updates_last_modified(self):
+        """It should set status=completed and refresh last_modified on checkout"""
+        # Create and bulk add items
+        payload = {"customer_id": 515151}
+        response = self.client.post(BASE_URL, json=payload)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        sc = response.get_json()
+        shopcart_id = sc["id"]
+        last_modified_before = sc.get("last_modified")
+
+        body = {
+            "items": [
+                {"product_id": 3001, "quantity": 2, "price": 19.99},
+                {"product_id": 3002, "quantity": 3, "price": 29.99},
+            ]
+        }
+        response = self.client.put(f"{BASE_URL}/{shopcart_id}", json=body)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Checkout
+        response = self.client.put(f"{BASE_URL}/{shopcart_id}/checkout")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        after = response.get_json()
+
+        self.assertEqual(after["status"], "completed")
+        self.assertIn("last_modified", after)
+        self.assertIsNotNone(after["last_modified"])
+        if last_modified_before:
+            self.assertNotEqual(after["last_modified"], last_modified_before)
+
+    def test_update_shopcart_not_found(self):
+        """It should return 404 when updating a non-existing shopcart"""
+        body = {
+            "status": "completed",
+            "items": [{"product_id": 1, "quantity": 1, "price": 1.0}],
+        }
+        response = self.client.put(f"{BASE_URL}/999999", json=body)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_update_shopcart_bad_content_type(self):
+        """It should reject updates with missing/incorrect Content-Type"""
+        # Create a cart to have a valid id
+        payload = {"customer_id": 1111}
+        response = self.client.post(BASE_URL, json=payload)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        sc = response.get_json()
+        shopcart_id = sc["id"]
+
+        # No Content-Type header -> 415 via check_content_type
+        response = self.client.open(
+            f"{BASE_URL}/{shopcart_id}", method="PUT", data=b"{}"
+        )
+        self.assertEqual(response.status_code, status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
+
+    # ----------------------------------------------------------
     # SUPPORT FUNCTIONS AND ERROR HANDLERS
     # ----------------------------------------------------------
 
