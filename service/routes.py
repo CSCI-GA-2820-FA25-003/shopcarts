@@ -381,3 +381,24 @@ def add_item_to_shopcart(customer_id):
     item.create()
 
     return jsonify(item.serialize()), status.HTTP_201_CREATED
+
+
+######################################################################
+# READ AN ITEM FROM SHOPCART
+######################################################################
+@app.route("/shopcarts/<int:customer_id>/items/<int:item_id>", methods=["GET"])
+def read_item_from_shopcart(customer_id, item_id):
+    """Read an item from a shopcart"""
+    app.logger.info(f"Request to read item {item_id} from shopcart of customer {customer_id}")
+
+    # find the shopcart for the customer
+    shopcart = Shopcart.find_by_customer_id(customer_id).first()
+    if not shopcart:
+        abort(status.HTTP_404_NOT_FOUND, f"Shopcart for customer {customer_id} not found")
+
+    # find the item in the shopcart
+    item = ShopcartItem.find(item_id)
+    if not item or item.shopcart_id != shopcart.id:
+        abort(status.HTTP_404_NOT_FOUND, f"Item with id {item_id} not found in this shopcart")
+
+    return jsonify(item.serialize()), status.HTTP_200_OK
