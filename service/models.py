@@ -6,6 +6,7 @@ All of the models are stored in this module
 
 import logging
 from datetime import datetime
+import decimal
 from decimal import Decimal
 from flask_sqlalchemy import SQLAlchemy
 
@@ -144,6 +145,106 @@ class Shopcart(db.Model):
                 "Invalid Shopcart: bad data format " + str(error)
             ) from error
         return self
+
+    def upsert_item(self, product_id, quantity, price, description=""):
+        """Add or update an item by product_id; quantity<=0 deletes it. Does not commit."""
+        existing = None
+        for it in getattr(self, "items", []):
+            if int(getattr(it, "product_id", -1)) == int(product_id):
+                existing = it
+                break
+
+        if quantity is None or int(quantity) <= 0:
+            if existing is not None:
+                db.session.delete(existing)
+                try:
+                    self.items.remove(existing)
+                except ValueError:
+                    pass
+        else:
+            if existing is None:
+                new_item = ShopcartItem(
+                    shopcart_id=self.id,
+                    product_id=int(product_id),
+                    quantity=int(quantity),
+                    price=price,
+                    description=description or "",
+                )
+                db.session.add(new_item)
+                if hasattr(self, "items"):
+                    self.items.append(new_item)
+            else:
+                existing.quantity = int(quantity)
+                existing.price = price
+                if description:
+                    existing.description = description
+
+        total = 0
+        for it in getattr(self, "items", []):
+            try:
+                total += int(getattr(it, "quantity", 0) or 0)
+            except (TypeError, ValueError):
+                continue
+        self.total_items = int(total)
+
+    def remove_item(self, product_id: int):
+        """Remove an item by product_id. Does not commit."""
+        return self.upsert_item(product_id=product_id, quantity=0, price=0)
+
+    def set_items(self, items_payload: list):
+        """
+        Bulk, idempotent application of item changes:
+        - quantity > 0 => add or update
+        - quantity <= 0 => remove
+        Recomputes total_items at the end.
+        """
+        items = items_payload or []
+
+        for item in items:
+            try:
+                product_id = int(item["product_id"])
+            except (KeyError, TypeError, ValueError) as e:
+                raise DataValidationError(f"Invalid product_id: {item!r}") from e
+
+            try:
+                quantity = int(item.get("quantity", 0))
+            except (TypeError, ValueError) as e:
+                raise DataValidationError(f"Invalid quantity: {item!r}") from e
+
+            price_raw = item.get("price", 0)
+            try:
+                price = Decimal(str(price_raw))
+            except (decimal.InvalidOperation, ValueError, TypeError) as e:
+                raise DataValidationError(f"Invalid price: {price_raw!r}") from e
+
+            description = item.get("description", "")
+
+            if quantity <= 0:
+                if hasattr(self, "remove_item"):
+                    self.remove_item(product_id)
+                else:
+                    self.upsert_item(
+                        product_id=product_id,
+                        quantity=0,
+                        price=Decimal(0),
+                        description=description,
+                    )
+            else:
+                self.upsert_item(
+                    product_id=product_id,
+                    quantity=quantity,
+                    price=price,
+                    description=description,
+                )
+
+        total = 0
+        if hasattr(self, "items"):
+            for i in self.items:
+                try:
+                    total += int(getattr(i, "quantity", 0) or 0)
+                except (TypeError, ValueError):
+                    continue
+        self.total_items = int(total)
 
     ##################################################
     # CLASS METHODS

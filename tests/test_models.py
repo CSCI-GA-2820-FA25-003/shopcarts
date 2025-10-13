@@ -127,7 +127,7 @@ class TestShopcartModel(TestCase):
         # See if we get back 5 shopcarts
         shopcarts = Shopcart.all()
         self.assertEqual(len(shopcarts), 5)
-    
+
     def test_list_shopcarts(self):
         """It should List shopcarts with filters and pagination"""
         base_time = base_time = datetime.datetime.utcnow()
@@ -290,7 +290,9 @@ class TestShopcartModel(TestCase):
     def test_shopcart_create_failure(self):
         """It should raise DataValidationError when create fails"""
         shopcart = ShopcartFactory()
-        with patch("service.models.db.session.commit", side_effect=Exception("DB error")):
+        with patch(
+            "service.models.db.session.commit", side_effect=Exception("DB error")
+        ):
             with self.assertRaises(DataValidationError):
                 shopcart.create()
         db.session.rollback()
@@ -299,7 +301,9 @@ class TestShopcartModel(TestCase):
         """It should raise DataValidationError when update fails"""
         shopcart = ShopcartFactory()
         shopcart.create()
-        with patch("service.models.db.session.commit", side_effect=Exception("DB error")):
+        with patch(
+            "service.models.db.session.commit", side_effect=Exception("DB error")
+        ):
             with self.assertRaises(DataValidationError):
                 shopcart.update()
         db.session.rollback()
@@ -308,7 +312,9 @@ class TestShopcartModel(TestCase):
         """It should raise DataValidationError when delete fails"""
         shopcart = ShopcartFactory()
         shopcart.create()
-        with patch("service.models.db.session.commit", side_effect=Exception("DB error")):
+        with patch(
+            "service.models.db.session.commit", side_effect=Exception("DB error")
+        ):
             with self.assertRaises(DataValidationError):
                 shopcart.delete()
         db.session.rollback()
@@ -332,6 +338,54 @@ class TestShopcartModel(TestCase):
         payload = MissingGet({"customer_id": 1, "status": "active"})
         shopcart = Shopcart()
         self.assertRaises(DataValidationError, shopcart.deserialize, payload)
+
+    def test_set_items_bulk_updates_and_total(self):
+        """It should bulk apply item adds/updates/removals and keep total_items accurate"""
+        sc = Shopcart(customer_id=987654321, status="active", total_items=0)
+        sc.create()
+        self.assertEqual(sc.total_items, 0)
+        self.assertEqual(len(sc.items), 0)
+
+        sc.set_items(
+            [
+                {"product_id": 9001, "quantity": 2, "price": Decimal("3.5")},
+                {"product_id": 9002, "quantity": 3, "price": Decimal("1.0")},
+            ]
+        )
+        sc.update()
+        fresh = Shopcart.find(sc.id)
+        self.assertEqual(fresh.total_items, 5)
+        self.assertTrue(
+            any(i.product_id == 9001 and i.quantity == 2 for i in fresh.items)
+        )
+        self.assertTrue(
+            any(i.product_id == 9002 and i.quantity == 3 for i in fresh.items)
+        )
+
+        sc.set_items(
+            [
+                {"product_id": 9001, "quantity": 4, "price": Decimal("3.5")},
+                {"product_id": 9002, "quantity": 0},
+            ]
+        )
+        sc.update()
+        fresh = Shopcart.find(sc.id)
+        self.assertEqual(fresh.total_items, 4)
+        self.assertTrue(
+            any(i.product_id == 9001 and i.quantity == 4 for i in fresh.items)
+        )
+        self.assertFalse(any(i.product_id == 9002 for i in fresh.items))
+
+        def test_last_modified_updates(self):
+            """It should update last_modified when the shopcart is changed"""
+            sc = ShopcartFactory()
+            sc.create()
+            before = sc.last_modified
+            sc.status = "completed"
+            sc.update()
+            after = Shopcart.find(sc.id).last_modified
+            self.assertIsNotNone(after)
+            self.assertTrue(after >= before)
 
 
 ######################################################################
@@ -525,7 +579,9 @@ class TestShopcartItemModel(TestCase):
         shopcart = ShopcartFactory()
         shopcart.create()
         item = ShopcartItemFactory(shopcart_id=shopcart.id)
-        with patch("service.models.db.session.commit", side_effect=Exception("DB item error")):
+        with patch(
+            "service.models.db.session.commit", side_effect=Exception("DB item error")
+        ):
             with self.assertRaises(DataValidationError):
                 item.create()
         db.session.rollback()
@@ -536,7 +592,9 @@ class TestShopcartItemModel(TestCase):
         shopcart.create()
         item = ShopcartItemFactory(shopcart_id=shopcart.id)
         item.create()
-        with patch("service.models.db.session.commit", side_effect=Exception("DB item error")):
+        with patch(
+            "service.models.db.session.commit", side_effect=Exception("DB item error")
+        ):
             with self.assertRaises(DataValidationError):
                 item.update()
         db.session.rollback()
@@ -547,7 +605,9 @@ class TestShopcartItemModel(TestCase):
         shopcart.create()
         item = ShopcartItemFactory(shopcart_id=shopcart.id)
         item.create()
-        with patch("service.models.db.session.commit", side_effect=Exception("DB item error")):
+        with patch(
+            "service.models.db.session.commit", side_effect=Exception("DB item error")
+        ):
             with self.assertRaises(DataValidationError):
                 item.delete()
         db.session.rollback()
