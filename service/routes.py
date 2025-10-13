@@ -358,3 +358,26 @@ def update_shopcart_item(shopcart_id: int, product_id: int):
 
     shopcart.update()
     return jsonify(shopcart.serialize()), status.HTTP_200_OK
+
+
+
+######################################################################
+# CREATE A NEW SHOPCART ITEM
+######################################################################
+@app.route("/shopcarts/<int:customer_id>/items", methods=["POST"])
+def add_item_to_shopcart(customer_id):
+    """
+    Add an Item to a Shopcart
+    """
+    app.logger.info("Request to add item to shopcart for customer %s", customer_id)
+    shopcart = Shopcart.find_by_customer_id(customer_id).first()
+    if not shopcart:
+        abort(status.HTTP_404_NOT_FOUND, f"Shopcart for customer {customer_id} not found")
+
+    data = request.get_json()
+    item = ShopcartItem()
+    item.deserialize(data)
+    item.shopcart_id = shopcart.id
+    item.create()
+
+    return jsonify(item.serialize()), status.HTTP_201_CREATED

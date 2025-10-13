@@ -646,3 +646,32 @@ class TestYourResourceService(TestCase):
         resp, code = error_handlers.internal_server_error("boom")
         self.assertEqual(code, status.HTTP_500_INTERNAL_SERVER_ERROR)
         self.assertEqual(resp.json["error"], "Internal Server Error")
+
+
+    def test_add_item_to_existing_shopcart(self):
+        """It should successfully add an item to an existing shopcart"""
+        # 1. Create a new shopcart
+        resp = self.client.post(
+            "/shopcarts",
+            json={"customer_id": 1, "status": "active"},
+            content_type="application/json"
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+
+        # 2. Add an item to the created shopcart
+        resp = self.client.post(
+            "/shopcarts/1/items",
+            json={
+                "product_id": 100,
+                "quantity": 2,
+                "price": 19.99,
+                "description": "Coffee Mug"
+            },
+            content_type="application/json"
+        )
+
+        # 3. Verify the item was successfully added
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        data = resp.get_json()
+        self.assertEqual(data["product_id"], 100)
+        self.assertEqual(data["quantity"], 2)
