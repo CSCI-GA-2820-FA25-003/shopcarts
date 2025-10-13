@@ -603,6 +603,82 @@ class TestYourResourceService(TestCase):
         )
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
 
+
+    def test_add_item_to_existing_shopcart(self):
+        """It should successfully add an item to an existing shopcart"""
+        # 1. Create a new shopcart
+        resp = self.client.post(
+            "/shopcarts",
+            json={"customer_id": 1, "status": "active"},
+            content_type="application/json"
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+
+        # 2. Add an item to the created shopcart
+        resp = self.client.post(
+            "/shopcarts/1/items",
+            json={
+                "product_id": 100,
+                "quantity": 2,
+                "price": 19.99,
+                "description": "Coffee Mug"
+            },
+            content_type="application/json"
+        )
+
+        # 3. Verify the item was successfully added
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        data = resp.get_json()
+        self.assertEqual(data["product_id"], 100)
+        self.assertEqual(data["quantity"], 2)
+
+
+    def test_read_item_from_shopcart(self):
+        """It should read an existing item from a shopcart"""
+        # 1. create a new shopcart
+        resp = self.client.post(
+            "/shopcarts",
+            json={"customer_id": 1, "status": "active"},
+            content_type="application/json"
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+
+        # 2. ddd an item to the shopcart
+        resp = self.client.post(
+            "/shopcarts/1/items",
+            json={"product_id": 100, "quantity": 2, "price": 9.99},
+            content_type="application/json"
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        item_id = resp.get_json()["id"]
+
+        # 3. read the item back
+        resp = self.client.get(f"/shopcarts/1/items/{item_id}")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+    def test_read_item_from_nonexistent_shopcart(self):
+        """It should return 404 if the shopcart does not exist"""
+        resp = self.client.get("/shopcarts/999/items/1")
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_read_item_not_in_this_shopcart(self):
+        """It should return 404 if the item is not in the customer's shopcart"""
+        # create a shopcart and add an item
+        self.client.post(
+            "/shopcarts",
+            json={"customer_id": 1, "status": "active"},
+            content_type="application/json"
+        )
+        self.client.post(
+            "/shopcarts/1/items",
+            json={"product_id": 101, "quantity": 2, "price": 9.99},
+            content_type="application/json"
+        )
+
+        # read item from a different (non-existent) cart
+        resp = self.client.get("/shopcarts/2/items/1")
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
     # ----------------------------------------------------------
     # SUPPORT FUNCTIONS AND ERROR HANDLERS
     # ----------------------------------------------------------
@@ -648,30 +724,4 @@ class TestYourResourceService(TestCase):
         self.assertEqual(resp.json["error"], "Internal Server Error")
 
 
-    def test_add_item_to_existing_shopcart(self):
-        """It should successfully add an item to an existing shopcart"""
-        # 1. Create a new shopcart
-        resp = self.client.post(
-            "/shopcarts",
-            json={"customer_id": 1, "status": "active"},
-            content_type="application/json"
-        )
-        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
 
-        # 2. Add an item to the created shopcart
-        resp = self.client.post(
-            "/shopcarts/1/items",
-            json={
-                "product_id": 100,
-                "quantity": 2,
-                "price": 19.99,
-                "description": "Coffee Mug"
-            },
-            content_type="application/json"
-        )
-
-        # 3. Verify the item was successfully added
-        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
-        data = resp.get_json()
-        self.assertEqual(data["product_id"], 100)
-        self.assertEqual(data["quantity"], 2)
