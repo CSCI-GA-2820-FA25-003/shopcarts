@@ -700,6 +700,37 @@ class TestYourResourceService(TestCase):
         resp = self.client.delete("/shopcarts/1/items/999")
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
+    def test_list_items_in_shopcart(self):
+        """It should list all items in a shopcart"""
+        # create a shopcart
+        resp = self.client.post("/shopcarts", json={"customer_id": 1, "status": "active"})
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+
+        # add multiple items
+        self.client.post(
+            "/shopcarts/1/items",
+            json={"product_id": 101, "quantity": 1, "price": 9.99},
+            content_type="application/json"
+        )
+        self.client.post(
+            "/shopcarts/1/items",
+            json={"product_id": 102, "quantity": 2, "price": 19.99},
+            content_type="application/json"
+        )
+
+        # add an item to a different cart to ensure isolation
+        resp = self.client.get("/shopcarts/1/items")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.get_json()
+        self.assertEqual(len(data), 2)
+        self.assertEqual(data[0]["product_id"], 101)
+        self.assertEqual(data[1]["product_id"], 102)
+
+    def test_list_items_in_nonexistent_shopcart(self):
+        """It should return 404 if the shopcart does not exist"""
+        resp = self.client.get("/shopcarts/999/items")
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
     # ----------------------------------------------------------
     # SUPPORT FUNCTIONS AND ERROR HANDLERS
     # ----------------------------------------------------------

@@ -412,18 +412,38 @@ def delete_item_from_shopcart(customer_id, item_id):
     """Delete an existing item from a shopcart"""
     app.logger.info(f"Request to delete item {item_id} from shopcart of customer {customer_id}")
 
-    # 找到该用户的购物车
+    # find the shopcart for the customer
     shopcart = Shopcart.find_by_customer_id(customer_id).first()
     if not shopcart:
         abort(status.HTTP_404_NOT_FOUND, f"Shopcart for customer {customer_id} not found")
 
-    # 找到该 item
+    # find the item in the shopcart
     item = ShopcartItem.find(item_id)
     if not item or item.shopcart_id != shopcart.id:
         abort(status.HTTP_404_NOT_FOUND, f"Item with id {item_id} not found in this shopcart")
 
-    # 删除 item
+    # delete the item
     item.delete()
     app.logger.info(f"Item {item_id} deleted successfully from shopcart {customer_id}")
 
     return "", status.HTTP_204_NO_CONTENT
+
+##############################################
+# LIST ALL ITEMS IN A SHOPCART
+##############################################
+@app.route("/shopcarts/<int:customer_id>/items", methods=["GET"])
+def list_items_in_shopcart(customer_id):
+    """List all items in a customer's shopcart"""
+    app.logger.info(f"Request to list all items in shopcart of customer {customer_id}")
+
+    # find the shopcart for the customer
+    shopcart = Shopcart.find_by_customer_id(customer_id).first()
+    if not shopcart:
+        abort(status.HTTP_404_NOT_FOUND, f"Shopcart for customer {customer_id} not found")
+
+    # all items in the shopcart
+    items = ShopcartItem.find_by_shopcart_id(shopcart.id)
+
+    # convert to list of dicts
+    results = [item.serialize() for item in items]
+    return jsonify(results), status.HTTP_200_OK
