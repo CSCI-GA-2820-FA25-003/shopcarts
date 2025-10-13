@@ -402,3 +402,28 @@ def read_item_from_shopcart(customer_id, item_id):
         abort(status.HTTP_404_NOT_FOUND, f"Item with id {item_id} not found in this shopcart")
 
     return jsonify(item.serialize()), status.HTTP_200_OK
+
+
+##############################################
+# DELETE AN ITEM FROM SHOPCART
+##############################################
+@app.route("/shopcarts/<int:customer_id>/items/<int:item_id>", methods=["DELETE"])
+def delete_item_from_shopcart(customer_id, item_id):
+    """Delete an existing item from a shopcart"""
+    app.logger.info(f"Request to delete item {item_id} from shopcart of customer {customer_id}")
+
+    # 找到该用户的购物车
+    shopcart = Shopcart.find_by_customer_id(customer_id).first()
+    if not shopcart:
+        abort(status.HTTP_404_NOT_FOUND, f"Shopcart for customer {customer_id} not found")
+
+    # 找到该 item
+    item = ShopcartItem.find(item_id)
+    if not item or item.shopcart_id != shopcart.id:
+        abort(status.HTTP_404_NOT_FOUND, f"Item with id {item_id} not found in this shopcart")
+
+    # 删除 item
+    item.delete()
+    app.logger.info(f"Item {item_id} deleted successfully from shopcart {customer_id}")
+
+    return "", status.HTTP_204_NO_CONTENT
