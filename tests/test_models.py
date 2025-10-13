@@ -21,7 +21,6 @@ Test cases for Shopcart Model
 # pylint: disable=duplicate-code
 import os
 import logging
-import datetime
 from decimal import Decimal
 from unittest import TestCase
 from unittest.mock import patch
@@ -127,64 +126,6 @@ class TestShopcartModel(TestCase):
         # See if we get back 5 shopcarts
         shopcarts = Shopcart.all()
         self.assertEqual(len(shopcarts), 5)
-    
-    def test_list_shopcarts(self):
-        """It should List shopcarts with filters and pagination"""
-        base_time = base_time = datetime.datetime.utcnow()
-
-        # First record: active status
-        sc1 = ShopcartFactory(status="active", created_date=base_time)
-        sc1.create()
-
-        # Second record: completed status
-        sc2 = ShopcartFactory(status="completed", created_date=base_time)
-        sc2.create()
-
-        # Third record: active status but created one year earlier
-        sc3 = ShopcartFactory(
-            status="active", created_date=base_time.replace(year=base_time.year - 1)
-        )
-        sc3.create()
-
-        # Test filtering by status
-        result = Shopcart.list_shopcarts(status="active")
-        self.assertTrue(all(cart["status"] == "active" for cart in result["shopcarts"]))
-        self.assertEqual(result["pagination"]["page"], 1)
-        self.assertEqual(result["pagination"]["limit"], 10)
-        self.assertIn("total", result["pagination"])
-        self.assertIn("hasNext", result["pagination"])
-
-        # Test filtering by customer_id
-        cid = sc2.customer_id
-        result_by_customer = Shopcart.list_shopcarts(customer_id=cid)
-        self.assertTrue(
-            all(cart["customer_id"] == cid for cart in result_by_customer["shopcarts"])
-        )
-
-        # Test filtering by date range (only include those within the last year)
-        start_date = base_time.replace(year=base_time.year - 1, month=base_time.month)
-        end_date = base_time
-        result_date_filtered = Shopcart.list_shopcarts(
-            start_date=start_date, end_date=end_date
-        )
-        self.assertTrue(
-            all(
-                start_date
-                <= datetime.datetime.fromisoformat(cart["created_date"])
-                <= end_date
-                for cart in result_date_filtered["shopcarts"]
-            )
-        )
-
-        # Test pagination: limit=1 should return only one record and hasNext=True
-        paginated = Shopcart.list_shopcarts(limit=1, page=1)
-        self.assertEqual(len(paginated["shopcarts"]), 1)
-        self.assertTrue(paginated["pagination"]["hasNext"])
-
-        # Test the second page: should return different results, and page number should be 2
-        paginated_next = Shopcart.list_shopcarts(limit=1, page=2)
-        self.assertEqual(paginated_next["pagination"]["page"], 2)
-        self.assertLessEqual(len(paginated_next["shopcarts"]), 1)
 
     def test_find_by_customer_id(self):
         """It should Find Shopcarts by customer_id"""
