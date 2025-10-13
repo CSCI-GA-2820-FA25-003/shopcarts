@@ -777,3 +777,9 @@ class TestYourResourceService(TestCase):
 
 
 
+        def test_get_shopcart_requires_auth(self):
+            """It should require authentication header for customer read"""
+            shopcart = ShopcartFactory()
+            shopcart.create()
+            response = self.client.get(f"{BASE_URL}/{shopcart.customer_id}")
+            self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
