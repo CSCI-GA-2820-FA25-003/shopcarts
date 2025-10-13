@@ -390,6 +390,220 @@ class TestYourResourceService(TestCase):
         self.assertEqual(response.status_code, status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
 
     # ----------------------------------------------------------
+    # UPDATE AN ITEM
+    # ----------------------------------------------------------
+
+    def test_update_item_quantity_valid(self):
+        """Given a cart with an item, when quantity is changed to a valid number,
+        then the item and totals should update."""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        item = ShopcartItemFactory(
+            shopcart_id=cart.id,
+            product_id=777,
+            quantity=2,
+            price=Decimal("5.00"),
+            description="size=S,color=red",
+        )
+        item.create()
+
+        body = {"quantity": 5}
+        resp = self.client.patch(
+            f"{BASE_URL}/{cart.id}/items/777",
+            json=body,
+            headers={"X-Customer-ID": str(cart.customer_id)},
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        updated = resp.get_json()
+
+        self.assertEqual(updated["total_items"], 5)
+        self.assertTrue(
+            any(i["product_id"] == 777 and i["quantity"] == 5 for i in updated["items"])
+        )
+
+        # verify customer view totals
+        resp = self.client.get(
+            f"{BASE_URL}/{cart.customer_id}",
+            headers={"X-Customer-ID": str(cart.customer_id)},
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        view = resp.get_json()
+        self.assertEqual(view["totalItems"], 5)
+        self.assertAlmostEqual(view["totalPrice"], 25.00, places=2)
+
+    def test_update_item_options_and_price(self):
+        """Given a cart with an item, when options (description) and price change,
+        then the item persists the option and totals reflect price delta."""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        item = ShopcartItemFactory(
+            shopcart_id=cart.id,
+            product_id=888,
+            quantity=1,
+            price=Decimal("10.00"),
+            description="size=M,color=black",
+        )
+        item.create()
+
+        body = {"description": "size=L,color=blue", "price": 12.50}
+        resp = self.client.put(
+            f"{BASE_URL}/{cart.id}/items/888",
+            json=body,
+            headers={"X-Customer-ID": str(cart.customer_id)},
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        updated = resp.get_json()
+
+        self.assertTrue(
+            any(
+                i["product_id"] == 888 and i["description"] == "size=L,color=blue"
+                for i in updated["items"]
+            )
+        )
+        self.assertTrue(
+            any(
+                i["product_id"] == 888 and float(i["price"]) == 12.50
+                for i in updated["items"]
+            )
+        )
+
+        resp = self.client.get(
+            f"{BASE_URL}/{cart.customer_id}",
+            headers={"X-Customer-ID": str(cart.customer_id)},
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        view = resp.get_json()
+        self.assertEqual(view["totalItems"], 1)
+        self.assertAlmostEqual(view["totalPrice"], 12.50, places=2)
+
+    def test_update_item_quantity_zero_removes(self):
+        """Given a cart with an item, when quantity is set to zero,
+        then the item is removed and totals are zero."""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        item = ShopcartItemFactory(
+            shopcart_id=cart.id, product_id=999, quantity=3, price=Decimal("2.00")
+        )
+        item.create()
+
+        resp = self.client.patch(
+            f"{BASE_URL}/{cart.id}/items/999",
+            json={"quantity": 0},
+            headers={"X-Customer-ID": str(cart.customer_id)},
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        updated = resp.get_json()
+
+        self.assertEqual(updated["total_items"], 0)
+        self.assertFalse(any(i["product_id"] == 999 for i in updated["items"]))
+
+    def test_update_item_not_found_in_cart(self):
+        """It should return 404 if the product does not exist in the cart"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        resp = self.client.patch(
+            f"{BASE_URL}/{cart.id}/items/55555",
+            json={"quantity": 1},
+            headers={"X-Customer-ID": str(cart.customer_id)},
+        )
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_update_item_quantity_rule_violations(self):
+        """It should enforce quantity rules (type, negative, too large)"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        item = ShopcartItemFactory(
+            shopcart_id=cart.id, product_id=2468, quantity=1, price=Decimal("1.00")
+        )
+        item.create()
+
+        # non-integer
+        resp = self.client.patch(
+            f"{BASE_URL}/{cart.id}/items/2468",
+            json={"quantity": "NaN"},
+            headers={"X-Customer-ID": str(cart.customer_id)},
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # negative
+        resp = self.client.patch(
+            f"{BASE_URL}/{cart.id}/items/2468",
+            json={"quantity": -1},
+            headers={"X-Customer-ID": str(cart.customer_id)},
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # too large
+        resp = self.client.patch(
+            f"{BASE_URL}/{cart.id}/items/2468",
+            json={"quantity": 1000},
+            headers={"X-Customer-ID": str(cart.customer_id)},
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_update_item_forbidden_wrong_customer(self):
+        """It should forbid updating an item in someone else's cart"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        item = ShopcartItemFactory(
+            shopcart_id=cart.id, product_id=1234, quantity=1, price=Decimal("1.00")
+        )
+        item.create()
+
+        resp = self.client.patch(
+            f"{BASE_URL}/{cart.id}/items/1234",
+            json={"quantity": 2},
+            headers={"X-Customer-ID": str(cart.customer_id + 1)},
+        )
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_update_item_requires_active_cart(self):
+        """It should block item updates when the cart is not active"""
+        cart = ShopcartFactory(status="completed")
+        cart.create()
+        item = ShopcartItemFactory(
+            shopcart_id=cart.id, product_id=4321, quantity=1, price=Decimal("1.00")
+        )
+        item.create()
+
+        resp = self.client.patch(
+            f"{BASE_URL}/{cart.id}/items/4321",
+            json={"quantity": 2},
+            headers={"X-Customer-ID": str(cart.customer_id)},
+        )
+        self.assertEqual(resp.status_code, status.HTTP_409_CONFLICT)
+
+    def test_update_item_missing_customer_header(self):
+        """Update item should require X-Customer-ID header"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        item = ShopcartItemFactory(
+            shopcart_id=cart.id, product_id=1357, quantity=1, price=Decimal("1.00")
+        )
+        item.create()
+
+        resp = self.client.patch(
+            f"{BASE_URL}/{cart.id}/items/1357", json={"quantity": 2}
+        )
+        self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_update_item_invalid_price(self):
+        """Price must parse as Decimal"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        item = ShopcartItemFactory(
+            shopcart_id=cart.id, product_id=2469, quantity=1, price=Decimal("2.00")
+        )
+        item.create()
+
+        resp = self.client.put(
+            f"{BASE_URL}/{cart.id}/items/2469",
+            json={"price": "not-a-number"},
+            headers={"X-Customer-ID": str(cart.customer_id)},
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    # ----------------------------------------------------------
     # SUPPORT FUNCTIONS AND ERROR HANDLERS
     # ----------------------------------------------------------
 
