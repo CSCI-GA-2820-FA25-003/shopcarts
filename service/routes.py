@@ -21,6 +21,7 @@ This service implements a REST API that allows you to Create, Read, Update
 and Delete Shopcarts
 """
 
+import decimal
 from decimal import Decimal
 from flask import jsonify, request, url_for, abort
 from flask import current_app as app  # Import Flask application
@@ -266,5 +267,94 @@ def checkout_shopcart(shopcart_id: int):
             f"Shopcart with id '{shopcart_id}' was not found.",
         )
     shopcart.status = "completed"
+    shopcart.update()
+    return jsonify(shopcart.serialize()), status.HTTP_200_OK
+
+
+######################################################################
+# UPDATE A SINGLE ITEM IN A SHOPCART
+######################################################################
+@app.route(
+    "/shopcarts/<int:shopcart_id>/items/<int:product_id>", methods=["PUT", "PATCH"]
+)
+def update_shopcart_item(shopcart_id: int, product_id: int):
+    """
+    Update a single item (quantity/price/description) in the caller's shopcart.
+
+    Rules:
+      - X-Customer-ID must match the cart's customer_id.
+      - Only explicit 'completed' or 'cancelled' carts are blocked.
+      - quantity==0 removes the item.
+      - quantity must be an integer in [0, 99].
+      - price must parse as Decimal when provided.
+      - description stands in for options (size/color/etc).
+    Returns the full serialized shopcart after the update.
+    """
+    header_val = request.headers.get("X-Customer-ID")
+    if header_val is None:
+        abort(status.HTTP_401_UNAUTHORIZED, "Missing X-Customer-ID header.")
+    try:
+        requester_id = int(header_val)
+    except ValueError:
+        abort(status.HTTP_400_BAD_REQUEST, "X-Customer-ID must be an integer.")
+
+    shopcart = Shopcart.find(shopcart_id)
+    if not shopcart:
+        abort(
+            status.HTTP_404_NOT_FOUND,
+            f"Shopcart with id '{shopcart_id}' was not found.",
+        )
+    if requester_id != int(shopcart.customer_id):
+        abort(status.HTTP_403_FORBIDDEN, "You can only update your own shopcart.")
+
+    check_content_type("application/json")
+    payload = request.get_json() or {}
+
+    raw_status = shopcart.status
+    status_norm = (
+        raw_status.strip().lower() if isinstance(raw_status, str) else "active"
+    )
+    if status_norm in ("completed", "cancelled"):
+        abort(status.HTTP_409_CONFLICT, "Cannot update items on a non-active shopcart.")
+
+    current = None
+    for it in getattr(shopcart, "items", []):
+        if int(getattr(it, "product_id", -1)) == int(product_id):
+            current = it
+            break
+    if current is None:
+        abort(
+            status.HTTP_404_NOT_FOUND,
+            f"Item with product_id '{product_id}' not found in this shopcart.",
+        )
+
+    new_quantity = payload.get("quantity", current.quantity)
+    new_price_raw = payload.get("price", float(current.price))
+    new_description = payload.get("description", current.description or "")
+
+    max_qty = 99
+    try:
+        q = int(new_quantity)
+    except (TypeError, ValueError):
+        abort(status.HTTP_400_BAD_REQUEST, "quantity must be an integer.")
+    if q < 0:
+        abort(status.HTTP_400_BAD_REQUEST, "quantity cannot be negative.")
+    if q > max_qty:
+        abort(status.HTTP_400_BAD_REQUEST, f"quantity cannot exceed {max_qty}.")
+
+    if q == 0:
+        shopcart.remove_item(product_id)
+    else:
+        try:
+            p = Decimal(str(new_price_raw))
+        except (decimal.InvalidOperation, ValueError, TypeError):
+            abort(status.HTTP_400_BAD_REQUEST, "price is invalid.")
+        shopcart.upsert_item(
+            product_id=product_id,
+            quantity=q,
+            price=p,
+            description=new_description,
+        )
+
     shopcart.update()
     return jsonify(shopcart.serialize()), status.HTTP_200_OK
