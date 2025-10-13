@@ -19,6 +19,9 @@ db = SQLAlchemy()
 class DataValidationError(Exception):
     """Used for an data validation errors when deserializing"""
 
+######################################################################
+#  S H O P C A R T   M O D E L
+######################################################################
 
 class Shopcart(db.Model):
     """
