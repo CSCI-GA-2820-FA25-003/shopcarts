@@ -148,12 +148,14 @@ class Shopcart(db.Model):
 
     def upsert_item(self, product_id, quantity, price, description=""):
         """Add or update an item by product_id; quantity<=0 deletes it. Does not commit."""
-        existing = None
-        for it in getattr(self, "items", []):
-            if int(getattr(it, "product_id", -1)) == int(product_id):
-                existing = it
-                break
-
+        existing = next(
+            (
+                it
+                for it in getattr(self, "items", [])
+                if int(getattr(it, "product_id", -1)) == int(product_id)
+            ),
+            None,
+        )
         if quantity is None or int(quantity) <= 0:
             if existing is not None:
                 db.session.delete(existing)
@@ -178,14 +180,12 @@ class Shopcart(db.Model):
                 existing.price = price
                 if description:
                     existing.description = description
-
-        total = 0
-        for it in getattr(self, "items", []):
-            try:
-                total += int(getattr(it, "quantity", 0) or 0)
-            except (TypeError, ValueError):
-                continue
-        self.total_items = int(total)
+        self.total_items = int(
+            sum(
+                int(getattr(it, "quantity", 0) or 0)
+                for it in getattr(self, "items", [])
+            )
+        )
 
     def remove_item(self, product_id: int):
         """Remove an item by product_id. Does not commit."""
@@ -198,37 +198,23 @@ class Shopcart(db.Model):
         - quantity <= 0 => remove
         Recomputes total_items at the end.
         """
-        items = items_payload or []
-
-        for item in items:
+        for item in items_payload or []:
             try:
                 product_id = int(item["product_id"])
             except (KeyError, TypeError, ValueError) as e:
                 raise DataValidationError(f"Invalid product_id: {item!r}") from e
-
             try:
                 quantity = int(item.get("quantity", 0))
             except (TypeError, ValueError) as e:
                 raise DataValidationError(f"Invalid quantity: {item!r}") from e
-
             price_raw = item.get("price", 0)
             try:
                 price = Decimal(str(price_raw))
             except (decimal.InvalidOperation, ValueError, TypeError) as e:
                 raise DataValidationError(f"Invalid price: {price_raw!r}") from e
-
             description = item.get("description", "")
-
             if quantity <= 0:
-                if hasattr(self, "remove_item"):
-                    self.remove_item(product_id)
-                else:
-                    self.upsert_item(
-                        product_id=product_id,
-                        quantity=0,
-                        price=Decimal(0),
-                        description=description,
-                    )
+                self.remove_item(product_id)
             else:
                 self.upsert_item(
                     product_id=product_id,
@@ -236,15 +222,9 @@ class Shopcart(db.Model):
                     price=price,
                     description=description,
                 )
-
-        total = 0
-        if hasattr(self, "items"):
-            for i in self.items:
-                try:
-                    total += int(getattr(i, "quantity", 0) or 0)
-                except (TypeError, ValueError):
-                    continue
-        self.total_items = int(total)
+        self.total_items = int(
+            sum(int(getattr(i, "quantity", 0) or 0) for i in getattr(self, "items", []))
+        )
 
     ##################################################
     # CLASS METHODS
