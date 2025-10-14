@@ -235,6 +235,24 @@ class TestYourResourceService(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
+    def test_list_shopcarts(self):
+        """It should list all shopcarts"""
+        shopcarts = self._create_shopcarts(3)
+        self.assertEqual(len(shopcarts), 3)
+
+        response = self.client.get(BASE_URL)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        data = response.get_json()
+        self.assertIsInstance(data, list)
+        self.assertGreaterEqual(len(data), 3)
+
+        first = data[0]
+        self.assertIn("id", first)
+        self.assertIn("customer_id", first)
+        self.assertIn("status", first)
+        self.assertIn("items", first)
+
     # ----------------------------------------------------------
     # TEST DELETE
     # ----------------------------------------------------------

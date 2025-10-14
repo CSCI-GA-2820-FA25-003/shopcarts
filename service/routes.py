@@ -346,6 +346,20 @@ def update_shopcart_item(shopcart_id: int, product_id: int):
 
 
 ######################################################################
+# LIST ALL SHOPCARTS
+######################################################################
+@app.route("/shopcarts", methods=["GET"])
+def list_shopcarts():
+    """
+    Retrieve all Shopcarts
+    """
+    app.logger.info("Request to list all shopcarts")
+    shopcarts = Shopcart.all()
+    results = [shopcart.serialize() for shopcart in shopcarts]
+    return jsonify(results), status.HTTP_200_OK
+
+
+######################################################################
 # CREATE A NEW SHOPCART ITEM
 ######################################################################
 @app.route("/shopcarts/<int:customer_id>/items", methods=["POST"])
