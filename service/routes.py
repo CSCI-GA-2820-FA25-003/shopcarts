@@ -279,23 +279,14 @@ def checkout_shopcart(shopcart_id: int):
 )
 def update_shopcart_item(shopcart_id: int, product_id: int):
     """
-    Update a single item (quantity/price/description) in the caller's shopcart.
-
-    Rules:
-      - X-Customer-ID must match the cart's customer_id.
-      - Only explicit 'completed' or 'cancelled' carts are blocked.
-      - quantity==0 removes the item.
-      - quantity must be an integer in [0, 99].
-      - price must parse as Decimal when provided.
-      - description stands in for options (size/color/etc).
-    Returns the full serialized shopcart after the update.
+    Update a single item in a shopcart
     """
     header_val = request.headers.get("X-Customer-ID")
     if header_val is None:
         abort(status.HTTP_401_UNAUTHORIZED, "Missing X-Customer-ID header.")
     try:
         requester_id = int(header_val)
-    except ValueError:
+    except (TypeError, ValueError):
         abort(status.HTTP_400_BAD_REQUEST, "X-Customer-ID must be an integer.")
 
     shopcart = Shopcart.find(shopcart_id)
@@ -310,55 +301,48 @@ def update_shopcart_item(shopcart_id: int, product_id: int):
     check_content_type("application/json")
     payload = request.get_json() or {}
 
-    raw_status = shopcart.status
     status_norm = (
-        raw_status.strip().lower() if isinstance(raw_status, str) else "active"
+        shopcart.status.strip().lower()
+        if isinstance(shopcart.status, str)
+        else "active"
     )
     if status_norm in ("completed", "cancelled"):
         abort(status.HTTP_409_CONFLICT, "Cannot update items on a non-active shopcart.")
 
-    current = None
-    for it in getattr(shopcart, "items", []):
-        if int(getattr(it, "product_id", -1)) == int(product_id):
-            current = it
-            break
+    current = next(
+        (it for it in shopcart.items if int(it.product_id) == int(product_id)), None
+    )
     if current is None:
         abort(
             status.HTTP_404_NOT_FOUND,
             f"Item with product_id '{product_id}' not found in this shopcart.",
         )
 
-    new_quantity = payload.get("quantity", current.quantity)
-    new_price_raw = payload.get("price", float(current.price))
-    new_description = payload.get("description", current.description or "")
-
-    max_qty = 99
+    q_raw = payload.get("quantity", current.quantity)
     try:
-        q = int(new_quantity)
+        q = int(q_raw)
     except (TypeError, ValueError):
         abort(status.HTTP_400_BAD_REQUEST, "quantity must be an integer.")
-    if q < 0:
-        abort(status.HTTP_400_BAD_REQUEST, "quantity cannot be negative.")
-    if q > max_qty:
-        abort(status.HTTP_400_BAD_REQUEST, f"quantity cannot exceed {max_qty}.")
+    if q < 0 or q > 99:
+        abort(status.HTTP_400_BAD_REQUEST, "invalid quantity")
 
     if q == 0:
         shopcart.remove_item(product_id)
-    else:
-        try:
-            p = Decimal(str(new_price_raw))
-        except (decimal.InvalidOperation, ValueError, TypeError):
-            abort(status.HTTP_400_BAD_REQUEST, "price is invalid.")
-        shopcart.upsert_item(
-            product_id=product_id,
-            quantity=q,
-            price=p,
-            description=new_description,
-        )
+        shopcart.update()
+        return jsonify(shopcart.serialize()), status.HTTP_200_OK
 
+    price_raw = payload.get("price", float(current.price))
+    try:
+        price = Decimal(str(price_raw))
+    except (decimal.InvalidOperation, ValueError, TypeError):
+        abort(status.HTTP_400_BAD_REQUEST, "price is invalid.")
+
+    desc = payload.get("description", current.description or "")
+    shopcart.upsert_item(
+        product_id=product_id, quantity=q, price=price, description=desc
+    )
     shopcart.update()
     return jsonify(shopcart.serialize()), status.HTTP_200_OK
-
 
 
 ######################################################################
@@ -366,13 +350,13 @@ def update_shopcart_item(shopcart_id: int, product_id: int):
 ######################################################################
 @app.route("/shopcarts/<int:customer_id>/items", methods=["POST"])
 def add_item_to_shopcart(customer_id):
-    """
-    Add an Item to a Shopcart
-    """
+    """Add an Item to a Shopcart"""
     app.logger.info("Request to add item to shopcart for customer %s", customer_id)
     shopcart = Shopcart.find_by_customer_id(customer_id).first()
     if not shopcart:
-        abort(status.HTTP_404_NOT_FOUND, f"Shopcart for customer {customer_id} not found")
+        abort(
+            status.HTTP_404_NOT_FOUND, f"Shopcart for customer {customer_id} not found"
+        )
 
     data = request.get_json()
     item = ShopcartItem()
@@ -389,17 +373,24 @@ def add_item_to_shopcart(customer_id):
 @app.route("/shopcarts/<int:customer_id>/items/<int:item_id>", methods=["GET"])
 def read_item_from_shopcart(customer_id, item_id):
     """Read an item from a shopcart"""
-    app.logger.info(f"Request to read item {item_id} from shopcart of customer {customer_id}")
+    app.logger.info(
+        f"Request to read item {item_id} from shopcart of customer {customer_id}"
+    )
 
     # find the shopcart for the customer
     shopcart = Shopcart.find_by_customer_id(customer_id).first()
     if not shopcart:
-        abort(status.HTTP_404_NOT_FOUND, f"Shopcart for customer {customer_id} not found")
+        abort(
+            status.HTTP_404_NOT_FOUND, f"Shopcart for customer {customer_id} not found"
+        )
 
     # find the item in the shopcart
     item = ShopcartItem.find(item_id)
     if not item or item.shopcart_id != shopcart.id:
-        abort(status.HTTP_404_NOT_FOUND, f"Item with id {item_id} not found in this shopcart")
+        abort(
+            status.HTTP_404_NOT_FOUND,
+            f"Item with id {item_id} not found in this shopcart",
+        )
 
     return jsonify(item.serialize()), status.HTTP_200_OK
 
@@ -410,23 +401,31 @@ def read_item_from_shopcart(customer_id, item_id):
 @app.route("/shopcarts/<int:customer_id>/items/<int:item_id>", methods=["DELETE"])
 def delete_item_from_shopcart(customer_id, item_id):
     """Delete an existing item from a shopcart"""
-    app.logger.info(f"Request to delete item {item_id} from shopcart of customer {customer_id}")
+    app.logger.info(
+        f"Request to delete item {item_id} from shopcart of customer {customer_id}"
+    )
 
     # find the shopcart for the customer
     shopcart = Shopcart.find_by_customer_id(customer_id).first()
     if not shopcart:
-        abort(status.HTTP_404_NOT_FOUND, f"Shopcart for customer {customer_id} not found")
+        abort(
+            status.HTTP_404_NOT_FOUND, f"Shopcart for customer {customer_id} not found"
+        )
 
     # find the item in the shopcart
     item = ShopcartItem.find(item_id)
     if not item or item.shopcart_id != shopcart.id:
-        abort(status.HTTP_404_NOT_FOUND, f"Item with id {item_id} not found in this shopcart")
+        abort(
+            status.HTTP_404_NOT_FOUND,
+            f"Item with id {item_id} not found in this shopcart",
+        )
 
     # delete the item
     item.delete()
     app.logger.info(f"Item {item_id} deleted successfully from shopcart {customer_id}")
 
     return "", status.HTTP_204_NO_CONTENT
+
 
 ##############################################
 # LIST ALL ITEMS IN A SHOPCART
@@ -439,7 +438,9 @@ def list_items_in_shopcart(customer_id):
     # find the shopcart for the customer
     shopcart = Shopcart.find_by_customer_id(customer_id).first()
     if not shopcart:
-        abort(status.HTTP_404_NOT_FOUND, f"Shopcart for customer {customer_id} not found")
+        abort(
+            status.HTTP_404_NOT_FOUND, f"Shopcart for customer {customer_id} not found"
+        )
 
     # all items in the shopcart
     items = ShopcartItem.find_by_shopcart_id(shopcart.id)

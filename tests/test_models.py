@@ -332,6 +332,8 @@ class TestShopcartModel(TestCase):
         """It should raise DataValidationError when payload lacks dict methods"""
 
         class MissingGet(dict):
+            """Dict-like helper that raises AttributeError on .get(...) to simulate bad payloads."""
+
             def get(self, *_args, **_kwargs):
                 raise AttributeError("get")
 
@@ -375,17 +377,6 @@ class TestShopcartModel(TestCase):
             any(i.product_id == 9001 and i.quantity == 4 for i in fresh.items)
         )
         self.assertFalse(any(i.product_id == 9002 for i in fresh.items))
-
-        def test_last_modified_updates(self):
-            """It should update last_modified when the shopcart is changed"""
-            sc = ShopcartFactory()
-            sc.create()
-            before = sc.last_modified
-            sc.status = "completed"
-            sc.update()
-            after = Shopcart.find(sc.id).last_modified
-            self.assertIsNotNone(after)
-            self.assertTrue(after >= before)
 
 
 ######################################################################
@@ -616,6 +607,8 @@ class TestShopcartItemModel(TestCase):
         """It should raise DataValidationError when payload lacks dict methods"""
 
         class MissingGet(dict):
+            """Dict-like helper that raises AttributeError on .get(...) to simulate bad payloads."""
+
             def get(self, *_args, **_kwargs):
                 raise AttributeError("get")
 

@@ -23,13 +23,13 @@ import os
 import logging
 from unittest import TestCase
 from decimal import Decimal
+from werkzeug.exceptions import HTTPException
 from wsgi import app
 from service.common import status
 from service.models import db, Shopcart, ShopcartItem
-from .factories import ShopcartFactory, ShopcartItemFactory
 from service.common import error_handlers
 from service import routes
-from werkzeug.exceptions import HTTPException
+from .factories import ShopcartFactory, ShopcartItemFactory
 
 DATABASE_URI = os.getenv(
     "DATABASE_URI", "postgresql+psycopg://postgres:postgres@localhost:5432/testdb"
@@ -115,8 +115,6 @@ class TestYourResourceService(TestCase):
         paths = data["paths"]
         self.assertIn("shopcarts", paths)
         self.assertEqual(paths["shopcarts"], "/shopcarts")
-
-    # Todo: Add your test cases here...
 
     # ----------------------------------------------------------
     # TEST CREATE
@@ -603,56 +601,48 @@ class TestYourResourceService(TestCase):
         )
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
 
-
     def test_add_item_to_existing_shopcart(self):
         """It should successfully add an item to an existing shopcart"""
-        # 1. Create a new shopcart
         resp = self.client.post(
             "/shopcarts",
             json={"customer_id": 1, "status": "active"},
-            content_type="application/json"
+            content_type="application/json",
         )
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
 
-        # 2. Add an item to the created shopcart
         resp = self.client.post(
             "/shopcarts/1/items",
             json={
                 "product_id": 100,
                 "quantity": 2,
                 "price": 19.99,
-                "description": "Coffee Mug"
+                "description": "Coffee Mug",
             },
-            content_type="application/json"
+            content_type="application/json",
         )
 
-        # 3. Verify the item was successfully added
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
         data = resp.get_json()
         self.assertEqual(data["product_id"], 100)
         self.assertEqual(data["quantity"], 2)
 
-
     def test_read_item_from_shopcart(self):
         """It should read an existing item from a shopcart"""
-        # 1. create a new shopcart
         resp = self.client.post(
             "/shopcarts",
             json={"customer_id": 1, "status": "active"},
-            content_type="application/json"
+            content_type="application/json",
         )
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
 
-        # 2. ddd an item to the shopcart
         resp = self.client.post(
             "/shopcarts/1/items",
             json={"product_id": 100, "quantity": 2, "price": 9.99},
-            content_type="application/json"
+            content_type="application/json",
         )
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
         item_id = resp.get_json()["id"]
 
-        # 3. read the item back
         resp = self.client.get(f"/shopcarts/1/items/{item_id}")
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
 
@@ -667,12 +657,12 @@ class TestYourResourceService(TestCase):
         self.client.post(
             "/shopcarts",
             json={"customer_id": 1, "status": "active"},
-            content_type="application/json"
+            content_type="application/json",
         )
         self.client.post(
             "/shopcarts/1/items",
             json={"product_id": 101, "quantity": 2, "price": 9.99},
-            content_type="application/json"
+            content_type="application/json",
         )
 
         # read item from a different (non-existent) cart
@@ -682,12 +672,16 @@ class TestYourResourceService(TestCase):
     def test_delete_item_from_shopcart(self):
         """It should delete an item from the shopcart"""
         # create a shopcart and add an item
-        resp = self.client.post("/shopcarts", json={"customer_id": 1, "status": "active"})
+        resp = self.client.post(
+            "/shopcarts", json={"customer_id": 1, "status": "active"}
+        )
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
 
-        resp = self.client.post("/shopcarts/1/items",
-                                json={"product_id": 123, "quantity": 2, "price": 10.5},
-                                content_type="application/json")
+        resp = self.client.post(
+            "/shopcarts/1/items",
+            json={"product_id": 123, "quantity": 2, "price": 10.5},
+            content_type="application/json",
+        )
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
         item_id = resp.get_json()["id"]
 
@@ -703,19 +697,21 @@ class TestYourResourceService(TestCase):
     def test_list_items_in_shopcart(self):
         """It should list all items in a shopcart"""
         # create a shopcart
-        resp = self.client.post("/shopcarts", json={"customer_id": 1, "status": "active"})
+        resp = self.client.post(
+            "/shopcarts", json={"customer_id": 1, "status": "active"}
+        )
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
 
         # add multiple items
         self.client.post(
             "/shopcarts/1/items",
             json={"product_id": 101, "quantity": 1, "price": 9.99},
-            content_type="application/json"
+            content_type="application/json",
         )
         self.client.post(
             "/shopcarts/1/items",
             json={"product_id": 102, "quantity": 2, "price": 19.99},
-            content_type="application/json"
+            content_type="application/json",
         )
 
         # add an item to a different cart to ensure isolation
@@ -774,6 +770,3 @@ class TestYourResourceService(TestCase):
         resp, code = error_handlers.internal_server_error("boom")
         self.assertEqual(code, status.HTTP_500_INTERNAL_SERVER_ERROR)
         self.assertEqual(resp.json["error"], "Internal Server Error")
-
-
-
