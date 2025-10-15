@@ -222,6 +222,17 @@ class TestYourResourceService(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_admin_get_shopcart_via_customer_endpoint(self):
+        """Admin should be able to use customer endpoint to view any cart"""
+        shopcart = ShopcartFactory()
+        shopcart.create()
+        response = self.client.get(
+            f"{BASE_URL}/{shopcart.customer_id}", headers={"X-Role": "admin"}
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.get_json()
+        self.assertEqual(data["customerId"], shopcart.customer_id)
+
     def test_admin_get_shopcart(self):
         """Admin should be able to view any cart"""
         shopcart = ShopcartFactory()
@@ -250,7 +261,7 @@ class TestYourResourceService(TestCase):
         shopcarts = self._create_shopcarts(3)
         self.assertEqual(len(shopcarts), 3)
 
-        response = self.client.get(BASE_URL)
+        response = self.client.get(BASE_URL, headers={"X-Role": "admin"})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         data = response.get_json()
@@ -262,6 +273,16 @@ class TestYourResourceService(TestCase):
         self.assertIn("customer_id", first)
         self.assertIn("status", first)
         self.assertIn("items", first)
+
+    def test_list_shopcarts_forbidden_without_admin(self):
+        """It should forbid listing shopcarts without admin role"""
+        shopcarts = self._create_shopcarts(1)
+        self.assertEqual(len(shopcarts), 1)
+
+        response = self.client.get(BASE_URL)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        data = response.get_json()
+        self.assertIn("Admin privileges required.", data["message"])
 
     # ----------------------------------------------------------
     # TEST DELETE

@@ -135,6 +135,19 @@ def get_shopcarts(customer_id):
     Retrieve a single Shopcart for the given customer
     """
     app.logger.info("Request to Retrieve shopcart for customer [%s]", customer_id)
+    role = request.headers.get("X-Role")
+
+    if role == "admin":
+        shopcart = Shopcart.find_by_customer_id(customer_id).first()
+        if not shopcart:
+            abort(
+                status.HTTP_404_NOT_FOUND,
+                f"Shopcart for customer '{customer_id}' was not found.",
+            )
+
+        response = serialize_shopcart_response(shopcart)
+        app.logger.info("Admin returning shopcart for customer: %s", customer_id)
+        return jsonify(response), status.HTTP_200_OK
 
     header_customer = request.headers.get("X-Customer-ID")
     if header_customer is None:
@@ -359,6 +372,10 @@ def list_shopcarts():
     """
     Retrieve all Shopcarts
     """
+    role = request.headers.get("X-Role")
+    if role != "admin":
+        abort(status.HTTP_403_FORBIDDEN, "Admin privileges required.")
+
     app.logger.info("Request to list all shopcarts")
     shopcarts = Shopcart.all()
     results = [shopcart.serialize() for shopcart in shopcarts]

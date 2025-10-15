@@ -85,6 +85,16 @@ def mediatype_not_supported(error):
     )
 
 
+@app.errorhandler(status.HTTP_403_FORBIDDEN)
+def forbidden(error):
+    """Handles forbidden requests with 403_FORBIDDEN"""
+    message = str(error)
+    app.logger.warning(message)
+    return (
+        jsonify(status=status.HTTP_403_FORBIDDEN, error="Forbidden", message=message),
+        status.HTTP_403_FORBIDDEN,
+    )
+
 
 @app.errorhandler(status.HTTP_409_CONFLICT)
 def resource_conflict(error):
