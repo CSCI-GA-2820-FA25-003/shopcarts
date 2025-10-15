@@ -3,15 +3,26 @@ Shopcart model definition.
 """
 import decimal
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from .base import CRUDMixin, DataValidationError, db
 
 logger = logging.getLogger("flask.app")
+EASTERN_ZONE = ZoneInfo("America/New_York")
 
 
 class Shopcart(CRUDMixin, db.Model):
     """Represents a customer's shopcart."""
+
+    @staticmethod
+    def _to_eastern_iso(value):
+        """Return an ISO8601 string converted to US Eastern time."""
+        if not value:
+            return None
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value.astimezone(EASTERN_ZONE).isoformat()
 
     @staticmethod
     def _decimal():
@@ -88,12 +99,8 @@ class Shopcart(CRUDMixin, db.Model):
         return {
             "id": self.id,
             "customer_id": self.customer_id,
-            "created_date": (
-                self.created_date.isoformat() if self.created_date else None
-            ),
-            "last_modified": (
-                self.last_modified.isoformat() if self.last_modified else None
-            ),
+            "created_date": self._to_eastern_iso(self.created_date),
+            "last_modified": self._to_eastern_iso(self.last_modified),
             "status": self.status,
             "total_items": self.total_items,
             "items": [item.serialize() for item in self.items],

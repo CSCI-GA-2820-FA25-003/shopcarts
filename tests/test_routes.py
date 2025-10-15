@@ -270,7 +270,7 @@ class TestYourResourceService(TestCase):
     def test_delete_shopcart(self):
         """It should Delete a Shopcart"""
         test_shopcart = self._create_shopcarts(1)[0]
-        response = self.client.delete(f"{BASE_URL}/{test_shopcart.id}")
+        response = self.client.delete(f"{BASE_URL}/{test_shopcart.customer_id}")
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertEqual(len(response.data), 0)
         # make sure they are deleted
@@ -298,6 +298,7 @@ class TestYourResourceService(TestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         sc = response.get_json()
         shopcart_id = sc["id"]
+        customer_id = sc["customer_id"]
         self.assertEqual(sc.get("total_items", 0), 0)
 
         # Bulk update with one item (quantity=1)
@@ -311,7 +312,7 @@ class TestYourResourceService(TestCase):
                 }
             ]
         }
-        response = self.client.put(f"{BASE_URL}/{shopcart_id}", json=update_body)
+        response = self.client.put(f"{BASE_URL}/{customer_id}", json=update_body)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         after = response.get_json()
 
@@ -329,6 +330,7 @@ class TestYourResourceService(TestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         sc = response.get_json()
         shopcart_id = sc["id"]
+        customer_id = sc["customer_id"]
         self.assertEqual(sc.get("total_items", 0), 0)
 
         # Add two products
@@ -338,7 +340,7 @@ class TestYourResourceService(TestCase):
                 {"product_id": 2002, "quantity": 3, "price": 1.25},
             ]
         }
-        response = self.client.patch(f"{BASE_URL}/{shopcart_id}", json=body_add)
+        response = self.client.patch(f"{BASE_URL}/{customer_id}", json=body_add)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         after_add = response.get_json()
         self.assertEqual(after_add["total_items"], 5)
@@ -350,7 +352,7 @@ class TestYourResourceService(TestCase):
                 {"product_id": 2002, "quantity": 0},  # remove
             ]
         }
-        response = self.client.put(f"{BASE_URL}/{shopcart_id}", json=body_update_remove)
+        response = self.client.put(f"{BASE_URL}/{customer_id}", json=body_update_remove)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         after = response.get_json()
 
@@ -369,6 +371,7 @@ class TestYourResourceService(TestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         sc = response.get_json()
         shopcart_id = sc["id"]
+        customer_id = sc["customer_id"]
         last_modified_before = sc.get("last_modified")
 
         body = {
@@ -377,11 +380,11 @@ class TestYourResourceService(TestCase):
                 {"product_id": 3002, "quantity": 3, "price": 29.99},
             ]
         }
-        response = self.client.put(f"{BASE_URL}/{shopcart_id}", json=body)
+        response = self.client.put(f"{BASE_URL}/{customer_id}", json=body)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         # Checkout
-        response = self.client.put(f"{BASE_URL}/{shopcart_id}/checkout")
+        response = self.client.put(f"{BASE_URL}/{customer_id}/checkout")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         after = response.get_json()
 
@@ -401,7 +404,7 @@ class TestYourResourceService(TestCase):
         cart = ShopcartFactory(status="active")
         cart.create()
         resp = self.client.patch(
-            f"{BASE_URL}/{cart.id}", json={"status": "abandoned"}
+            f"{BASE_URL}/{cart.customer_id}", json={"status": "abandoned"}
         )
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         updated = Shopcart.find(cart.id)
@@ -423,11 +426,11 @@ class TestYourResourceService(TestCase):
         response = self.client.post(BASE_URL, json=payload)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         sc = response.get_json()
-        shopcart_id = sc["id"]
+        customer_id = sc["customer_id"]
 
         # No Content-Type header -> 415 via check_content_type
         response = self.client.open(
-            f"{BASE_URL}/{shopcart_id}", method="PUT", data=b"{}"
+            f"{BASE_URL}/{customer_id}", method="PUT", data=b"{}"
         )
         self.assertEqual(response.status_code, status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
 
@@ -457,7 +460,7 @@ class TestYourResourceService(TestCase):
         """It should return 404 when product id isn't present in cart"""
         cart, headers = self._create_cart_with_headers()
         resp = self.client.patch(
-            f"{BASE_URL}/{cart.id}/items/999999",
+            f"{BASE_URL}/{cart.customer_id}/items/999999",
             json={"quantity": 1},
             headers=headers,
         )
@@ -468,7 +471,7 @@ class TestYourResourceService(TestCase):
         cart, headers = self._create_cart_with_headers()
         item = self._add_item(cart)
         resp = self.client.patch(
-            f"{BASE_URL}/{cart.id}/items/{item.product_id}",
+            f"{BASE_URL}/{cart.customer_id}/items/{item.product_id}",
             json={"price": "not-a-number"},
             headers=headers,
         )
@@ -481,7 +484,7 @@ class TestYourResourceService(TestCase):
         cart.status = "completed"
         cart.update()
         resp = self.client.patch(
-            f"{BASE_URL}/{cart.id}/items/{item.product_id}",
+            f"{BASE_URL}/{cart.customer_id}/items/{item.product_id}",
             json={"quantity": 2},
             headers=headers,
         )
@@ -494,7 +497,7 @@ class TestYourResourceService(TestCase):
         item = ShopcartItemFactory(shopcart_id=cart.id)
         item.create()
         resp = self.client.patch(
-            f"{BASE_URL}/{cart.id}/items/{item.product_id}",
+            f"{BASE_URL}/{cart.customer_id}/items/{item.product_id}",
             json={"quantity": 2},
         )
         self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
@@ -506,7 +509,7 @@ class TestYourResourceService(TestCase):
         item = ShopcartItemFactory(shopcart_id=cart.id)
         item.create()
         resp = self.client.patch(
-            f"{BASE_URL}/{cart.id}/items/{item.product_id}",
+            f"{BASE_URL}/{cart.customer_id}/items/{item.product_id}",
             json={"quantity": 1},
             headers={"X-Customer-ID": "abc"},
         )
@@ -560,7 +563,7 @@ class TestYourResourceService(TestCase):
 
         body = {"quantity": 5}
         resp = self.client.patch(
-            f"{BASE_URL}/{cart.id}/items/777",
+            f"{BASE_URL}/{cart.customer_id}/items/777",
             json=body,
             headers={"X-Customer-ID": str(cart.customer_id)},
         )
@@ -598,7 +601,7 @@ class TestYourResourceService(TestCase):
 
         body = {"description": "size=L,color=blue", "price": 12.50}
         resp = self.client.put(
-            f"{BASE_URL}/{cart.id}/items/888",
+            f"{BASE_URL}/{cart.customer_id}/items/888",
             json=body,
             headers={"X-Customer-ID": str(cart.customer_id)},
         )
@@ -638,7 +641,7 @@ class TestYourResourceService(TestCase):
         item.create()
 
         resp = self.client.patch(
-            f"{BASE_URL}/{cart.id}/items/999",
+            f"{BASE_URL}/{cart.customer_id}/items/999",
             json={"quantity": 0},
             headers={"X-Customer-ID": str(cart.customer_id)},
         )
@@ -653,7 +656,7 @@ class TestYourResourceService(TestCase):
         cart = ShopcartFactory(status="active")
         cart.create()
         resp = self.client.patch(
-            f"{BASE_URL}/{cart.id}/items/55555",
+            f"{BASE_URL}/{cart.customer_id}/items/55555",
             json={"quantity": 1},
             headers={"X-Customer-ID": str(cart.customer_id)},
         )
@@ -670,7 +673,7 @@ class TestYourResourceService(TestCase):
 
         # non-integer
         resp = self.client.patch(
-            f"{BASE_URL}/{cart.id}/items/2468",
+            f"{BASE_URL}/{cart.customer_id}/items/2468",
             json={"quantity": "NaN"},
             headers={"X-Customer-ID": str(cart.customer_id)},
         )
@@ -678,7 +681,7 @@ class TestYourResourceService(TestCase):
 
         # negative
         resp = self.client.patch(
-            f"{BASE_URL}/{cart.id}/items/2468",
+            f"{BASE_URL}/{cart.customer_id}/items/2468",
             json={"quantity": -1},
             headers={"X-Customer-ID": str(cart.customer_id)},
         )
@@ -686,7 +689,7 @@ class TestYourResourceService(TestCase):
 
         # too large
         resp = self.client.patch(
-            f"{BASE_URL}/{cart.id}/items/2468",
+            f"{BASE_URL}/{cart.customer_id}/items/2468",
             json={"quantity": 1000},
             headers={"X-Customer-ID": str(cart.customer_id)},
         )
@@ -702,7 +705,7 @@ class TestYourResourceService(TestCase):
         item.create()
 
         resp = self.client.patch(
-            f"{BASE_URL}/{cart.id}/items/1234",
+            f"{BASE_URL}/{cart.customer_id}/items/1234",
             json={"quantity": 2},
             headers={"X-Customer-ID": str(cart.customer_id + 1)},
         )
@@ -718,7 +721,7 @@ class TestYourResourceService(TestCase):
         item.create()
 
         resp = self.client.patch(
-            f"{BASE_URL}/{cart.id}/items/4321",
+            f"{BASE_URL}/{cart.customer_id}/items/4321",
             json={"quantity": 2},
             headers={"X-Customer-ID": str(cart.customer_id)},
         )
@@ -734,7 +737,7 @@ class TestYourResourceService(TestCase):
         item.create()
 
         resp = self.client.patch(
-            f"{BASE_URL}/{cart.id}/items/1357", json={"quantity": 2}
+            f"{BASE_URL}/{cart.customer_id}/items/1357", json={"quantity": 2}
         )
         self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
 
@@ -748,7 +751,7 @@ class TestYourResourceService(TestCase):
         item.create()
 
         resp = self.client.put(
-            f"{BASE_URL}/{cart.id}/items/2469",
+            f"{BASE_URL}/{cart.customer_id}/items/2469",
             json={"price": "not-a-number"},
             headers={"X-Customer-ID": str(cart.customer_id)},
         )
@@ -779,6 +782,117 @@ class TestYourResourceService(TestCase):
         self.assertEqual(data["product_id"], 100)
         self.assertEqual(data["quantity"], 2)
 
+    def test_add_item_requires_product_id(self):
+        """It should reject item creation without a product_id"""
+        self.client.post(
+            "/shopcarts",
+            json={"customer_id": 1, "status": "active"},
+            content_type="application/json",
+        )
+        resp = self.client.post(
+            "/shopcarts/1/items",
+            json={"quantity": 1, "price": 9.99},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("product_id", resp.get_json()["message"])
+
+    def test_add_item_product_id_must_be_integer(self):
+        """It should reject non-integer product ids"""
+        self.client.post(
+            "/shopcarts",
+            json={"customer_id": 1, "status": "active"},
+            content_type="application/json",
+        )
+        resp = self.client.post(
+            "/shopcarts/1/items",
+            json={"product_id": "abc", "quantity": 1, "price": 9.99},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_add_item_quantity_must_be_integer(self):
+        """It should reject non-integer quantities"""
+        self.client.post(
+            "/shopcarts",
+            json={"customer_id": 1, "status": "active"},
+            content_type="application/json",
+        )
+        resp = self.client.post(
+            "/shopcarts/1/items",
+            json={"product_id": 100, "quantity": "two", "price": 9.99},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("quantity", resp.get_json()["message"])
+
+    def test_add_item_quantity_must_be_positive(self):
+        """It should reject zero or negative quantities"""
+        self.client.post(
+            "/shopcarts",
+            json={"customer_id": 1, "status": "active"},
+            content_type="application/json",
+        )
+        resp = self.client.post(
+            "/shopcarts/1/items",
+            json={"product_id": 100, "quantity": 0, "price": 9.99},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_add_item_requires_price_for_new_product(self):
+        """It should require price when adding a new product"""
+        self.client.post(
+            "/shopcarts",
+            json={"customer_id": 1, "status": "active"},
+            content_type="application/json",
+        )
+        resp = self.client.post(
+            "/shopcarts/1/items",
+            json={"product_id": 100, "quantity": 1},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("price", resp.get_json()["message"])
+
+    def test_add_item_price_must_parse(self):
+        """It should reject prices that cannot be parsed"""
+        self.client.post(
+            "/shopcarts",
+            json={"customer_id": 1, "status": "active"},
+            content_type="application/json",
+        )
+        resp = self.client.post(
+            "/shopcarts/1/items",
+            json={"product_id": 100, "quantity": 1, "price": "not-a-number"},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_add_item_existing_product_increments_quantity(self):
+        """It should merge with existing items and reuse stored price when price omitted"""
+        self.client.post(
+            "/shopcarts",
+            json={"customer_id": 1, "status": "active"},
+            content_type="application/json",
+        )
+        first = self.client.post(
+            "/shopcarts/1/items",
+            json={"product_id": 100, "quantity": 2, "price": 10.00},
+            content_type="application/json",
+        )
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+
+        second = self.client.post(
+            "/shopcarts/1/items",
+            json={"product_id": 100, "quantity": 1},
+            content_type="application/json",
+        )
+        self.assertEqual(second.status_code, status.HTTP_201_CREATED)
+        item = second.get_json()
+        self.assertEqual(item["quantity"], 3)
+        self.assertAlmostEqual(float(item["price"]), 10.00, places=2)
+
     def test_read_item_from_shopcart(self):
         """It should read an existing item from a shopcart"""
         resp = self.client.post(
@@ -794,9 +908,9 @@ class TestYourResourceService(TestCase):
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
-        item_id = resp.get_json()["id"]
+        product_id = resp.get_json()["product_id"]
 
-        resp = self.client.get(f"/shopcarts/1/items/{item_id}")
+        resp = self.client.get(f"/shopcarts/1/items/{product_id}")
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
 
     def test_read_item_from_nonexistent_shopcart(self):
@@ -836,10 +950,10 @@ class TestYourResourceService(TestCase):
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
-        item_id = resp.get_json()["id"]
+        product_id = resp.get_json()["product_id"]
 
-        # delete the item
-        resp = self.client.delete(f"/shopcarts/1/items/{item_id}")
+        # delete the item by product id
+        resp = self.client.delete(f"/shopcarts/1/items/{product_id}")
         self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
 
     def test_delete_nonexistent_item(self):

@@ -85,9 +85,9 @@ All request and response bodies are JSON. Unless otherwise noted, endpoints that
 | ------ | ---- | ----------- | -------------- |
 | GET | `/shopcarts/<customer_id>` | Retrieve the shopcart belonging to a specific customer | Header: `X-Customer-ID` with the same integer value as the path parameter. |
 | GET | `/admin/shopcarts/<customer_id>` | Admin view of any customer shopcart | Header: `X-Role: admin`. |
-| DELETE | `/shopcarts/<shopcart_id>` | Delete a shopcart by its database id | No body, id is the internal shopcart identifier. |
-| PUT / PATCH | `/shopcarts/<shopcart_id>` | Update shopcart status and optionally replace items | Body supports any of:<br>`status` (string),<br>`items` (array of Shopcart Items defined below). If `items` is provided it overwrites the existing collection. |
-| PUT / PATCH | `/shopcarts/<shopcart_id>/checkout` | Mark the shopcart as `completed` and refresh `last_modified` | No body |
+| DELETE | `/shopcarts/<customer_id>` | Delete a shopcart by its customer id | No body |
+| PUT / PATCH | `/shopcarts/<customer_id>` | Update shopcart status and optionally replace items | Body supports any of:<br>`status` (string),<br>`items` (array of Shopcart Items defined below). If `items` is provided it overwrites the existing collection. |
+| PUT / PATCH | `/shopcarts/<customer_id>/checkout` | Mark the shopcart as `completed` and refresh `last_modified` | No body |
 
 ### Shopcart Items
 | Method | Path | Description | Required Input |
@@ -96,10 +96,10 @@ All request and response bodies are JSON. Unless otherwise noted, endpoints that
 | GET | `/shopcarts/<customer_id>/items` | List all items in the customer's shopcart | No body |
 | GET | `/shopcarts/<customer_id>/items/<item_id>` | Retrieve a single item by id | No additional headers |
 | DELETE | `/shopcarts/<customer_id>/items/<item_id>` | Remove an item from the shopcart | No body |
-| PUT / PATCH | `/shopcarts/<shopcart_id>/items/<product_id>` | Update or remove (when quantity is 0) an item by `product_id` | Headers: `X-Customer-ID` must match the owning customer.<br>Body supports `quantity`, `price`, and `description`. Quantity is clamped to 0–99. Setting `quantity` to 0 deletes the item. |
+| PUT / PATCH | `/shopcarts/<customer_id>/items/<product_id>` | Update or remove (when quantity is 0) an item by `product_id` | Headers: `X-Customer-ID` must match the owning customer.<br>Body supports `quantity`, `price`, and `description`. Quantity is clamped to 0–99. Setting `quantity` to 0 deletes the item. |
 
 ### Item Schema
-The item objects appearing in `POST /shopcarts`, `PUT/PATCH /shopcarts/<shopcart_id>`, and the item-specific endpoints use the following fields:
+The item objects appearing in `POST /shopcarts`, `PUT/PATCH /shopcarts/<customer_id>`, and the item-specific endpoints use the following fields:
 - `product_id` (int, required)
 - `quantity` (int, required for create)
 - `price` (decimal value, required for create)
