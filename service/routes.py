@@ -104,6 +104,14 @@ def create_shopcarts():
     app.logger.info("Processing: %s", data)
     shopcart.deserialize(data)
 
+    # Enforce one cart per customer
+    existing = Shopcart.find_by_customer_id(shopcart.customer_id).first()
+    if existing:
+        abort(
+            status.HTTP_409_CONFLICT,
+            f"Shopcart for customer '{shopcart.customer_id}' already exists.",
+        )
+
     # Save the new Shopcart to the database
     shopcart.create()
     app.logger.info("Shopcart with new id [%s] saved!", shopcart.id)

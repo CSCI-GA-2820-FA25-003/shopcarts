@@ -148,6 +148,16 @@ class TestYourResourceService(TestCase):
         self.assertEqual(new_shopcart["totalPrice"], 0.0)
         self.assertIsInstance(new_shopcart["items"], list)
 
+    def test_create_shopcart_conflict(self):
+        """It should return 409 when creating a cart for the same customer twice"""
+        payload = {"customer_id": 9999, "status": "active"}
+        first = self.client.post(BASE_URL, json=payload)
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+        second = self.client.post(BASE_URL, json=payload)
+        self.assertEqual(second.status_code, status.HTTP_409_CONFLICT)
+        data = second.get_json()
+        self.assertIn("already exists", data["message"])
+
     # ----------------------------------------------------------
     # TEST READ
     # ----------------------------------------------------------
@@ -381,6 +391,22 @@ class TestYourResourceService(TestCase):
         if last_modified_before:
             self.assertNotEqual(after["last_modified"], last_modified_before)
 
+    def test_checkout_nonexistent_shopcart_returns_404(self):
+        """Checkout should return 404 when the cart id does not exist"""
+        resp = self.client.put(f"{BASE_URL}/999999/checkout")
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_update_shopcart_status_only(self):
+        """It should update the cart status when provided"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        resp = self.client.patch(
+            f"{BASE_URL}/{cart.id}", json={"status": "abandoned"}
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        updated = Shopcart.find(cart.id)
+        self.assertEqual(updated.status, "abandoned")
+
     def test_update_shopcart_not_found(self):
         """It should return 404 when updating a non-existing shopcart"""
         body = {
@@ -408,6 +434,115 @@ class TestYourResourceService(TestCase):
     # ----------------------------------------------------------
     # UPDATE AN ITEM
     # ----------------------------------------------------------
+
+    def _create_cart_with_headers(self, customer_id=321):
+        """Helper to create a cart and return (cart, headers)."""
+        cart = ShopcartFactory(customer_id=customer_id, status="active")
+        cart.create()
+        headers = {"X-Customer-ID": str(cart.customer_id)}
+        return cart, headers
+
+    def _add_item(self, cart, product_id=1234, quantity=1, price=Decimal("2.00")):
+        """Helper to attach an item to the provided cart."""
+        item = ShopcartItemFactory(
+            shopcart_id=cart.id,
+            product_id=product_id,
+            quantity=quantity,
+            price=price,
+        )
+        item.create()
+        return item
+
+    def test_update_item_not_found_returns_404(self):
+        """It should return 404 when product id isn't present in cart"""
+        cart, headers = self._create_cart_with_headers()
+        resp = self.client.patch(
+            f"{BASE_URL}/{cart.id}/items/999999",
+            json={"quantity": 1},
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_update_item_bad_price_returns_400(self):
+        """It should reject item updates when price parsing fails"""
+        cart, headers = self._create_cart_with_headers()
+        item = self._add_item(cart)
+        resp = self.client.patch(
+            f"{BASE_URL}/{cart.id}/items/{item.product_id}",
+            json={"price": "not-a-number"},
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_update_item_blocked_when_cart_completed(self):
+        """It should block modifications when the cart status is completed"""
+        cart, headers = self._create_cart_with_headers()
+        item = self._add_item(cart)
+        cart.status = "completed"
+        cart.update()
+        resp = self.client.patch(
+            f"{BASE_URL}/{cart.id}/items/{item.product_id}",
+            json={"quantity": 2},
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, status.HTTP_409_CONFLICT)
+
+    def test_update_item_missing_header_unauthorized(self):
+        """It should require X-Customer-ID header for item updates"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        item = ShopcartItemFactory(shopcart_id=cart.id)
+        item.create()
+        resp = self.client.patch(
+            f"{BASE_URL}/{cart.id}/items/{item.product_id}",
+            json={"quantity": 2},
+        )
+        self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_update_item_header_must_be_integer(self):
+        """It should reject requests where X-Customer-ID is not an integer"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        item = ShopcartItemFactory(shopcart_id=cart.id)
+        item.create()
+        resp = self.client.patch(
+            f"{BASE_URL}/{cart.id}/items/{item.product_id}",
+            json={"quantity": 1},
+            headers={"X-Customer-ID": "abc"},
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_update_item_cart_not_found(self):
+        """It should return 404 when the cart id does not exist"""
+        resp = self.client.patch(
+            f"{BASE_URL}/999999/items/111",
+            json={"quantity": 1},
+            headers={"X-Customer-ID": "999999"},
+        )
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_add_item_shopcart_not_found(self):
+        """It should return 404 when adding an item to a missing cart"""
+        resp = self.client.post(
+            "/shopcarts/999/items",
+            json={"product_id": 1, "quantity": 1, "price": 1.0},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_read_item_missing_in_cart(self):
+        """It should return 404 when the item id is not in the cart"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        resp = self.client.get(f"/shopcarts/{cart.customer_id}/items/123456")
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_delete_item_missing_in_cart(self):
+        """It should return 404 when deleting an item not present in the cart"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        resp = self.client.delete(f"/shopcarts/{cart.customer_id}/items/999")
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_update_item_quantity_valid(self):
         """Given a cart with an item, when quantity is changed to a valid number,

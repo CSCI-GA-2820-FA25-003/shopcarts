@@ -16,7 +16,7 @@ class ShopcartFactory(factory.Factory):
         model = Shopcart
 
     id = factory.Sequence(lambda n: n)
-    customer_id = FuzzyInteger(1, 10000)
+    customer_id = factory.Sequence(lambda n: n + 1)
     created_date = factory.Faker("date_time")
     last_modified = factory.Faker("date_time")
     status = FuzzyChoice(choices=["active", "abandoned", "completed"])
