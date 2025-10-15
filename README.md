@@ -9,6 +9,39 @@ This project implements a Flask-based REST API for managing customer shopcarts a
 
 The service automatically creates the database tables on startup.
 
+## Contents
+The project contains the following key files and directories:
+
+```text
+LICENSE             - Apache 2.0 license notice
+Makefile            - Common automation targets (install, test, lint, run, etc.)
+Pipfile             - Python dependency definitions (Pipenv)
+Pipfile.lock        - Locked dependency versions
+Procfile            - Honcho/Gunicorn process specification
+dot-env-example     - Sample environment variable configuration
+wsgi.py             - WSGI entry point exposing the Flask app
+service/            - Flask service package
+├── __init__.py     - Application factory and initialization
+├── config.py       - Service configuration settings
+├── routes.py       - REST API route handlers
+├── models/         - SQLAlchemy models for shopcarts and items
+│   ├── __init__.py - Model package initializer
+│   ├── base.py     - Shared DB mixins and utilities
+│   ├── shopcart.py - Shopcart model definition
+│   └── shopcart_item.py - Shopcart item model
+└── common/         - Shared helpers and CLI commands
+    ├── cli_commands.py  - Flask CLI to recreate tables
+    ├── error_handlers.py - Custom JSON error responses
+    ├── log_handlers.py  - Logging configuration
+    └── status.py        - HTTP status constants
+tests/              - Automated test suites
+├── __init__.py     - Test package initializer
+├── factories.py    - Factory helpers for generating test data
+├── test_cli_commands.py - Tests for CLI utilities
+├── test_models.py  - Tests for model behaviour
+└── test_routes.py  - Tests for REST API endpoints
+```
+
 ## Local Setup
 1. Clone the repository and move into the project directory.
 2. Install dependencies  
@@ -22,8 +55,8 @@ The service automatically creates the database tables on startup.
 
 ## Running the Service
 Choose one of the following:
-- `pipenv run flask run` (default Flask dev server on `http://127.0.0.1:8080`)
-- `make run` or `honcho start` (uses Honcho to launch Gunicorn via the `Procfile`)
+- `pipenv run flask run` (default Flask dev server on `http://127.0.0.1:5000`)
+- `make run` (uses Honcho to launch Gunicorn via the `Procfile`)
 
 When the service starts you should see log output confirming the database tables were created and the server is accepting requests.
 
