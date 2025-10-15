@@ -21,7 +21,6 @@ Test cases for Shopcart Model
 # pylint: disable=duplicate-code
 import os
 import logging
-import datetime
 from decimal import Decimal
 from unittest import TestCase
 from unittest.mock import patch
@@ -319,6 +318,20 @@ class TestShopcartModel(TestCase):
             any(i.product_id == 9001 and i.quantity == 4 for i in fresh.items)
         )
         self.assertFalse(any(i.product_id == 9002 for i in fresh.items))
+
+    def test_set_items_rejects_bad_payloads(self):
+        """It should raise DataValidationError when payload entries are invalid"""
+        sc = Shopcart(customer_id=123, status="active")
+        sc.create()
+
+        with self.assertRaises(DataValidationError):
+            sc.set_items([{"product_id": "NaN", "quantity": 1, "price": Decimal("1.0")}])
+
+        with self.assertRaises(DataValidationError):
+            sc.set_items([{"product_id": 1, "quantity": "foo", "price": Decimal("1.0")}])
+
+        with self.assertRaises(DataValidationError):
+            sc.set_items([{"product_id": 1, "quantity": 1, "price": "oops"}])
 
 
 ######################################################################
