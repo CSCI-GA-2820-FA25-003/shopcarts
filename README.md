@@ -1,69 +1,132 @@
-# NYU DevOps Project Template
+# Shopcart REST API Service
 
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Python](https://img.shields.io/badge/Language-Python-blue.svg)](https://python.org/)
+This project implements a Flask-based REST API for managing customer shopcarts and their items. It is the reference implementation used in the NYU DevOps course and extends the original project template with a working service, database models, and automated tests.
 
-This is a skeleton you can use to start your projects.
+## Prerequisites
+- Python 3.11
+- `pipenv` (or another preferred environment manager)
+- PostgreSQL (local or containerised) reachable by the Flask app
 
-**Note:** _Feel free to overwrite this `README.md` file with the one that describes your project._
-
-## Overview
-
-This project template contains starter code for your class project. The `/service` folder contains your `models.py` file for your model and a `routes.py` file for your service. The `/tests` folder has test case starter code for testing the model and the service separately. All you need to do is add your functionality. You can use the [lab-flask-tdd](https://github.com/nyu-devops/lab-flask-tdd) for code examples to copy from.
-
-## Automatic Setup
-
-The best way to use this repo is to start your own repo using it as a git template. To do this just press the green **Use this template** button in GitHub and this will become the source for your repository.
-
-## Manual Setup
-
-You can also clone this repository and then copy and paste the starter code into your project repo folder on your local computer. Be careful not to copy over your own `README.md` file so be selective in what you copy.
-
-There are 4 hidden files that you will need to copy manually if you use the Mac Finder or Windows Explorer to copy files from this folder into your repo folder.
-
-These should be copied using a bash shell as follows:
-
-```bash
-    cp .gitignore  ../<your_repo_folder>/
-    cp .flaskenv ../<your_repo_folder>/
-    cp .gitattributes ../<your_repo_folder>/
-```
+The service automatically creates the database tables on startup.
 
 ## Contents
-
-The project contains the following:
+The project contains the following key files and directories:
 
 ```text
-.gitignore          - this will ignore vagrant and other metadata files
-.flaskenv           - Environment variables to configure Flask
-.gitattributes      - File to gix Windows CRLF issues
-.devcontainers/     - Folder with support for VSCode Remote Containers
-dot-env-example     - copy to .env to use environment variables
-pyproject.toml      - Poetry list of Python libraries required by your code
-
-service/                   - service python package
-├── __init__.py            - package initializer
-├── config.py              - configuration parameters
-├── models.py              - module with business models
-├── routes.py              - module with service routes
-└── common                 - common code package
-    ├── cli_commands.py    - Flask command to recreate all tables
-    ├── error_handlers.py  - HTTP error handling code
-    ├── log_handlers.py    - logging setup code
-    └── status.py          - HTTP status constants
-
-tests/                     - test cases package
-├── __init__.py            - package initializer
-├── factories.py           - Factory for testing with fake objects
-├── test_cli_commands.py   - test suite for the CLI
-├── test_models.py         - test suite for business models
-└── test_routes.py         - test suite for service routes
+LICENSE             - Apache 2.0 license notice
+Makefile            - Common automation targets (install, test, lint, run, etc.)
+Pipfile             - Python dependency definitions (Pipenv)
+Pipfile.lock        - Locked dependency versions
+Procfile            - Honcho/Gunicorn process specification
+dot-env-example     - Sample environment variable configuration
+wsgi.py             - WSGI entry point exposing the Flask app
+service/            - Flask service package
+├── __init__.py     - Application factory and initialization
+├── config.py       - Service configuration settings
+├── routes.py       - REST API route handlers
+├── models/         - SQLAlchemy models for shopcarts and items
+│   ├── __init__.py - Model package initializer
+│   ├── base.py     - Shared DB mixins and utilities
+│   ├── shopcart.py - Shopcart model definition
+│   └── shopcart_item.py - Shopcart item model
+└── common/         - Shared helpers and CLI commands
+    ├── cli_commands.py  - Flask CLI to recreate tables
+    ├── error_handlers.py - Custom JSON error responses
+    ├── log_handlers.py  - Logging configuration
+    └── status.py        - HTTP status constants
+tests/              - Automated test suites
+├── __init__.py     - Test package initializer
+├── factories.py    - Factory helpers for generating test data
+├── test_cli_commands.py - Tests for CLI utilities
+├── test_models.py  - Tests for model behaviour
+└── test_routes.py  - Tests for REST API endpoints
 ```
 
-## License
+## Local Setup
+1. Clone the repository and move into the project directory.
+2. Install dependencies  
+   - Recommended: `pipenv install --dev`  
+   - Alternative: `make install` (requires `sudo` and `pipenv` on your `PATH`)
+3. Copy environment defaults and set the Flask app entry point:
+   ```bash
+   cp dot-env-example .env        # optional but keeps variables together
+   export FLASK_APP=wsgi:app
+   ```
 
-Copyright (c) 2016, 2025 [John Rofrano](https://www.linkedin.com/in/JohnRofrano/). All rights reserved.
+## Running the Service
+Choose one of the following:
+- `pipenv run flask run` (default Flask dev server on `http://127.0.0.1:5000`)
+- `make run` (uses Honcho to launch Gunicorn via the `Procfile`)
 
-Licensed under the Apache License. See [LICENSE](LICENSE)
+When the service starts you should see log output confirming the database tables were created and the server is accepting requests.
 
-This repository is part of the New York University (NYU) masters class: **CSCI-GA.2820-001 DevOps and Agile Methodologies** created and taught by [John Rofrano](https://cs.nyu.edu/~rofrano/), Adjunct Instructor, NYU Courant Institute, Graduate Division, Computer Science, and NYU Stern School of Business.
+## Running Tests and Quality Checks
+- Unit tests with coverage: `make test` (or `pytest --pspec --cov=service --disable-warnings`)
+- Linting: `make lint`
+
+All tests require the service dependencies to be installed and a database connection available (the test suite uses the configured Flask database).
+
+## API Overview
+All request and response bodies are JSON. Unless otherwise noted, endpoints that accept a body require the header `Content-Type: application/json`. Numeric identifiers (`customer_id`, `product_id`, `item_id`, etc.) must be sent as integers.
+
+### Service Metadata
+| Method | Path | Description | Notes |
+| ------ | ---- | ----------- | ----- |
+| GET | `/` | Returns service name, version, description, and available paths | No authentication required |
+
+### Shopcart Collection
+| Method | Path | Description | Required Input |
+| ------ | ---- | ----------- | -------------- |
+| POST | `/shopcarts` | Create a new shopcart | Body: `{ "customer_id": 1, "status": "active", "total_items": 0, "items": [] }`<br>`customer_id` (int) is required and must be unique. Optional fields: `status` (default `active`), `total_items`, `items` (see item schema below). |
+| GET | `/shopcarts` | List all shopcarts | No body |
+
+### Shopcart Detail
+| Method | Path | Description | Required Input |
+| ------ | ---- | ----------- | -------------- |
+| GET | `/shopcarts/<customer_id>` | Retrieve the shopcart belonging to a specific customer | Header: `X-Customer-ID` with the same integer value as the path parameter. |
+| GET | `/admin/shopcarts/<customer_id>` | Admin view of any customer shopcart | Header: `X-Role: admin`. |
+| DELETE | `/shopcarts/<shopcart_id>` | Delete a shopcart by its database id | No body, id is the internal shopcart identifier. |
+| PUT / PATCH | `/shopcarts/<shopcart_id>` | Update shopcart status and optionally replace items | Body supports any of:<br>`status` (string),<br>`items` (array of Shopcart Items defined below). If `items` is provided it overwrites the existing collection. |
+| PUT / PATCH | `/shopcarts/<shopcart_id>/checkout` | Mark the shopcart as `completed` and refresh `last_modified` | No body |
+
+### Shopcart Items
+| Method | Path | Description | Required Input |
+| ------ | ---- | ----------- | -------------- |
+| POST | `/shopcarts/<customer_id>/items` | Add a new item to the customer's active shopcart | Body: `{ "product_id": 10, "quantity": 2, "price": 19.99, "description": "T-shirt" }`.<br>`quantity` must be a positive integer and `price` is coerced to Decimal with 2 places. |
+| GET | `/shopcarts/<customer_id>/items` | List all items in the customer's shopcart | No body |
+| GET | `/shopcarts/<customer_id>/items/<item_id>` | Retrieve a single item by id | No additional headers |
+| DELETE | `/shopcarts/<customer_id>/items/<item_id>` | Remove an item from the shopcart | No body |
+| PUT / PATCH | `/shopcarts/<shopcart_id>/items/<product_id>` | Update or remove (when quantity is 0) an item by `product_id` | Headers: `X-Customer-ID` must match the owning customer.<br>Body supports `quantity`, `price`, and `description`. Quantity is clamped to 0–99. Setting `quantity` to 0 deletes the item. |
+
+### Item Schema
+The item objects appearing in `POST /shopcarts`, `PUT/PATCH /shopcarts/<shopcart_id>`, and the item-specific endpoints use the following fields:
+- `product_id` (int, required)
+- `quantity` (int, required for create)
+- `price` (decimal value, required for create)
+- `description` (string, optional)
+
+### Example Workflow
+```bash
+# Create a new shopcart for customer 1
+curl -X POST http://127.0.0.1:5000/shopcarts \
+  -H "Content-Type: application/json" \
+  -d '{"customer_id": 1}'
+
+# Add an item
+curl -X POST http://127.0.0.1:5000/shopcarts/1/items \
+  -H "Content-Type: application/json" \
+  -d '{"product_id": 1001, "quantity": 2, "price": 19.99, "description": "T-shirt"}'
+
+# View the cart as the customer
+curl http://127.0.0.1:5000/shopcarts/1 -H "X-Customer-ID: 1"
+
+# Checkout
+curl -X PATCH http://127.0.0.1:5000/shopcarts/1/checkout
+```
+
+## Additional Commands
+- Generate a random secret key: `make secret`
+- Build and run the production image: `make build` then `docker run`
+- Kubernetes helpers (`make cluster`, `make deploy`) are available for local cluster experimentation.
+
+With these instructions you can install, run, exercise each API endpoint, and test the service locally.
