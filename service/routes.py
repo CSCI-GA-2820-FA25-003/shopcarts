@@ -23,9 +23,11 @@ and Delete Shopcarts
 
 import decimal
 from decimal import Decimal
-from datetime import datetime
+from datetime import datetime, timezone
+from dataclasses import dataclass
 from flask import jsonify, request, url_for, abort
 from flask import current_app as app  # Import Flask application
+from sqlalchemy import func
 from service.models import Shopcart, ShopcartItem
 from service.common import status  # HTTP Status Codes
 
@@ -68,6 +70,130 @@ def _resolve_description(existing_item, payload):
     """Select description, defaulting to the existing entry."""
     base = existing_item.description if existing_item else ""
     return payload.get("description", base or "")
+
+
+def _parse_decimal(value: str, field: str) -> Decimal:
+    """Parse a decimal value from query parameters."""
+    cleaned = (value or "").strip()
+    if not cleaned:
+        abort(
+            status.HTTP_400_BAD_REQUEST,
+            f"{field} must be a non-empty decimal value when provided.",
+        )
+    try:
+        return Decimal(cleaned)
+    except (decimal.InvalidOperation, ValueError):
+        abort(
+            status.HTTP_400_BAD_REQUEST,
+            f"{field} must be a valid decimal number: {value}",
+        )
+
+
+def _compute_cart_total(cart: Shopcart) -> Decimal:
+    """Calculate the total price for a shopcart."""
+    total = Decimal("0")
+    for item in getattr(cart, "items", []):
+        quantity = int(getattr(item, "quantity", 0) or 0)
+        price = item.price if isinstance(item.price, Decimal) else Decimal(str(item.price or 0))
+        total += price * quantity
+    return total
+
+
+@dataclass
+class CartFilters:
+    """Container for list endpoint filters."""
+
+    status: str | None = None
+    customer_id: int | None = None
+    created_before: datetime | None = None
+    created_after: datetime | None = None
+    total_price_lt: Decimal | None = None
+    total_price_gt: Decimal | None = None
+
+
+def _parse_status_filter(value) -> str | None:
+    """Normalize and validate a status filter."""
+    if value is None:
+        return None
+    normalized = str(value).strip().lower()
+    if not normalized:
+        abort(
+            status.HTTP_400_BAD_REQUEST,
+            "status must be a non-empty value when provided.",
+        )
+    allowed_statuses = Shopcart.allowed_statuses()
+    if normalized not in allowed_statuses:
+        readable_statuses = ", ".join(sorted(allowed_statuses))
+        abort(
+            status.HTTP_400_BAD_REQUEST,
+            f"Invalid status '{value}'. Allowed values: {readable_statuses}.",
+        )
+    return normalized
+
+
+def _parse_customer_id_filter(value) -> int | None:
+    """Parse a customer_id filter."""
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        abort(
+            status.HTTP_400_BAD_REQUEST,
+            "customer_id must be an integer when provided.",
+        )
+
+
+def _parse_optional_datetime(value, field: str) -> datetime | None:
+    """Parse an ISO8601 timestamp when provided."""
+    if value is None:
+        return None
+    return _parse_iso8601_to_utc(value, field)
+
+
+def _parse_list_filters(args) -> CartFilters:
+    """Extract and validate query parameters for the list endpoint."""
+    filters = CartFilters()
+    filters.status = _parse_status_filter(args.get("status"))
+    filters.customer_id = _parse_customer_id_filter(args.get("customer_id"))
+    filters.created_before = _parse_optional_datetime(
+        args.get("created_before"), "created_before"
+    )
+    filters.created_after = _parse_optional_datetime(
+        args.get("created_after"), "created_after"
+    )
+    total_price_lt_raw = args.get("total_price_lt")
+    if total_price_lt_raw is not None:
+        filters.total_price_lt = _parse_decimal(total_price_lt_raw, "total_price_lt")
+    total_price_gt_raw = args.get("total_price_gt")
+    if total_price_gt_raw is not None:
+        filters.total_price_gt = _parse_decimal(total_price_gt_raw, "total_price_gt")
+    if (
+        filters.total_price_lt is not None
+        and filters.total_price_gt is not None
+        and filters.total_price_lt < filters.total_price_gt
+    ):
+        abort(
+            status.HTTP_400_BAD_REQUEST,
+            "total_price_lt must be greater than or equal to total_price_gt.",
+        )
+    return filters
+
+
+def _filter_by_total_price(shopcarts, min_total: Decimal | None, max_total: Decimal | None):
+    """Filter shopcarts in-memory according to total price bounds."""
+    if min_total is None and max_total is None:
+        return shopcarts
+
+    filtered = []
+    for cart in shopcarts:
+        total_amount = _compute_cart_total(cart)
+        if max_total is not None and total_amount > max_total:
+            continue
+        if min_total is not None and total_amount < min_total:
+            continue
+        filtered.append(cart)
+    return filtered
 
 
 ######################################################################
@@ -232,7 +358,7 @@ def update_shopcart(customer_id: int):
 @app.route("/shopcarts/<int:customer_id>/checkout", methods=["PUT", "PATCH"])
 def checkout_shopcart(customer_id: int):
     """
-    Change the status to "completes" and refresh last_modified
+    Change the status to "abandoned" and refresh last_modified.
     """
     shopcart = Shopcart.find_by_customer_id(customer_id).first()
     if not shopcart:
@@ -240,8 +366,57 @@ def checkout_shopcart(customer_id: int):
             status.HTTP_404_NOT_FOUND,
             f"Shopcart for customer '{customer_id}' was not found.",
         )
-    shopcart.status = "completed"
+    shopcart.status = "abandoned"
+    shopcart.last_modified = datetime.utcnow()
     shopcart.update()
+    return jsonify(shopcart.serialize()), status.HTTP_200_OK
+
+
+######################################################################
+# CANCEL A SHOPCART
+######################################################################
+@app.route("/shopcarts/<int:customer_id>/cancel", methods=["PATCH"])
+def cancel_shopcart(customer_id: int):
+    """
+    Mark the specified shopcart as abandoned.
+    """
+    app.logger.info("Request to cancel shopcart for customer [%s]", customer_id)
+    shopcart = Shopcart.find_by_customer_id(customer_id).first()
+    if not shopcart:
+        abort(
+            status.HTTP_404_NOT_FOUND,
+            f"Shopcart for customer '{customer_id}' was not found.",
+        )
+    current_status = (shopcart.status or "").strip().lower()
+    if current_status != "abandoned":
+        shopcart.status = "abandoned"
+        shopcart.last_modified = datetime.utcnow()
+        shopcart.update()
+    app.logger.info("Shopcart for customer [%s] cancelled.", customer_id)
+    return jsonify(shopcart.serialize()), status.HTTP_200_OK
+
+
+######################################################################
+# REACTIVATE A SHOPCART
+######################################################################
+@app.route("/shopcarts/<int:customer_id>/reactivate", methods=["PATCH"])
+def reactivate_shopcart(customer_id: int):
+    """
+    Reactivate an abandoned shopcart.
+    """
+    app.logger.info("Request to reactivate shopcart for customer [%s]", customer_id)
+    shopcart = Shopcart.find_by_customer_id(customer_id).first()
+    if not shopcart:
+        abort(
+            status.HTTP_404_NOT_FOUND,
+            f"Shopcart for customer '{customer_id}' was not found.",
+        )
+    current_status = (shopcart.status or "").strip().lower()
+    if current_status != "active":
+        shopcart.status = "active"
+        shopcart.last_modified = datetime.utcnow()
+        shopcart.update()
+    app.logger.info("Shopcart for customer [%s] reactivated.", customer_id)
     return jsonify(shopcart.serialize()), status.HTTP_200_OK
 
 
@@ -270,8 +445,8 @@ def update_shopcart_item(customer_id: int, product_id: int):
         if isinstance(shopcart.status, str)
         else "active"
     )
-    if status_norm in ("completed", "cancelled"):
-        abort(status.HTTP_409_CONFLICT, "Cannot update items on a non-active shopcart.")
+    if status_norm == "abandoned":
+        abort(status.HTTP_409_CONFLICT, "Cannot update items on an abandoned shopcart.")
 
     current = next(
         (it for it in shopcart.items if int(it.product_id) == int(product_id)), None
@@ -315,12 +490,44 @@ def update_shopcart_item(customer_id: int, product_id: int):
 @app.route("/shopcarts", methods=["GET"])
 def list_shopcarts():
     """
-    Retrieve all Shopcarts
+    Retrieve Shopcarts, optionally filtered by status and customer_id.
     """
-    app.logger.info("Request to list all shopcarts")
-    shopcarts = Shopcart.all()
-    results = [shopcart.serialize() for shopcart in shopcarts]
-    return jsonify(results), status.HTTP_200_OK
+    filters = _parse_list_filters(request.args)
+    app.logger.info(
+        (
+            "Request to list shopcarts filters="
+            "status=%s customer_id=%s created_before=%s created_after=%s "
+            "total_price_lt=%s total_price_gt=%s"
+        ),
+        filters.status,
+        filters.customer_id,
+        filters.created_before,
+        filters.created_after,
+        filters.total_price_lt,
+        filters.total_price_gt,
+    )
+
+    query = Shopcart.query
+    if filters.status is not None:
+        query = query.filter(func.lower(Shopcart.status) == filters.status)
+    if filters.customer_id is not None:
+        query = query.filter(Shopcart.customer_id == filters.customer_id)
+    if filters.created_before is not None:
+        query = query.filter(Shopcart.created_date <= filters.created_before)
+    if filters.created_after is not None:
+        query = query.filter(Shopcart.created_date >= filters.created_after)
+
+    return (
+        jsonify(
+            [
+                cart.serialize()
+                for cart in _filter_by_total_price(
+                    query.all(), filters.total_price_gt, filters.total_price_lt
+                )
+            ]
+        ),
+        status.HTTP_200_OK,
+    )
 
 
 ######################################################################
@@ -464,3 +671,25 @@ def list_items_in_shopcart(customer_id):
     # convert to list of dicts
     results = [item.serialize() for item in items]
     return jsonify(results), status.HTTP_200_OK
+
+
+def _parse_iso8601_to_utc(value: str, field: str) -> datetime:
+    """Parse an ISO8601 string into a UTC naive datetime for database comparison."""
+    cleaned = (value or "").strip()
+    if not cleaned:
+        abort(
+            status.HTTP_400_BAD_REQUEST,
+            f"{field} must be a non-empty ISO8601 timestamp when provided.",
+        )
+    normalized = cleaned.replace("Z", "+00:00").replace(" ", "+")
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        abort(
+            status.HTTP_400_BAD_REQUEST,
+            f"{field} must be a valid ISO8601 timestamp: {cleaned}",
+        )
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    utc_value = parsed.astimezone(timezone.utc)
+    return utc_value.replace(tzinfo=None)
