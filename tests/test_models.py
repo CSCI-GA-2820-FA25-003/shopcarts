@@ -95,16 +95,16 @@ class TestShopcartModel(TestCase):
         shopcart.create()
         self.assertIsNotNone(shopcart.id)
         # Change it and save it
-        shopcart.status = "completed"
+        shopcart.status = "abandoned"
         original_id = shopcart.id
         shopcart.update()
         self.assertEqual(shopcart.id, original_id)
-        self.assertEqual(shopcart.status, "completed")
+        self.assertEqual(shopcart.status, "abandoned")
         # Fetch it back and make sure the id hasn't changed
         shopcarts = Shopcart.all()
         self.assertEqual(len(shopcarts), 1)
         self.assertEqual(shopcarts[0].id, original_id)
-        self.assertEqual(shopcarts[0].status, "completed")
+        self.assertEqual(shopcarts[0].status, "abandoned")
 
     def test_delete_a_shopcart(self):
         """It should Delete a Shopcart"""

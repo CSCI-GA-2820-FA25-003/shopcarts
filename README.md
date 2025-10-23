@@ -78,7 +78,15 @@ All request and response bodies are JSON. Unless otherwise noted, endpoints that
 | Method | Path | Description | Required Input |
 | ------ | ---- | ----------- | -------------- |
 | POST | `/shopcarts` | Create a new shopcart | Body: `{ "customer_id": 1, "status": "active", "total_items": 0, "items": [] }`<br>`customer_id` (int) is required and must be unique. Optional fields: `status` (default `active`), `total_items`, `items` (see item schema below). |
-| GET | `/shopcarts` | List all shopcarts | No body |
+| GET | `/shopcarts` | List all shopcarts | No body. Optional query params: `status` (`active`, `abandoned`), `customer_id` (integer), `created_after`, `created_before` (ISO8601 timestamps), `total_price_gt`, and `total_price_lt` (decimal). |
+
+Filtering rules:
+- Filters can be combined; only carts matching every provided parameter are returned.
+- `created_after` / `created_before` accept ISO8601 timestamps (e.g. `2024-01-02T00:00:00+00:00`); omit the timezone to assume UTC.
+- `total_price_gt` / `total_price_lt` accept decimal values and filter on the computed cart total (sum of `price * quantity` for each item). Provide both to search within a range.
+- Omitting a filter leaves that dimension unrestricted.
+- Supplying a status other than `active` or `abandoned`, or a non-integer `customer_id`, produces a `400 Bad Request`.
+- Non-ISO8601 timestamps for `created_after` / `created_before`, invalid decimal totals, or contradictory ranges produce a `400 Bad Request`.
 
 ### Shopcart Detail
 | Method | Path | Description | Required Input |
@@ -87,7 +95,9 @@ All request and response bodies are JSON. Unless otherwise noted, endpoints that
 | GET | `/admin/shopcarts/<customer_id>` | Admin view of any customer shopcart | Header: `X-Role: admin`. |
 | DELETE | `/shopcarts/<customer_id>` | Delete a shopcart by its customer id | No body |
 | PUT / PATCH | `/shopcarts/<customer_id>` | Update shopcart status and optionally replace items | Body supports any of:<br>`status` (string),<br>`items` (array of Shopcart Items defined below). If `items` is provided it overwrites the existing collection. |
-| PUT / PATCH | `/shopcarts/<customer_id>/checkout` | Mark the shopcart as `completed` and refresh `last_modified` | No body |
+| PUT / PATCH | `/shopcarts/<customer_id>/checkout` | Close the cart by marking it `abandoned` and refresh `last_modified` | No body |
+| PATCH | `/shopcarts/<customer_id>/cancel` | Cancel the cart (sets status to `abandoned`) | No body |
+| PATCH | `/shopcarts/<customer_id>/reactivate` | Reactivate a previously abandoned cart (sets status to `active`) | No body |
 
 ### Shopcart Items
 | Method | Path | Description | Required Input |

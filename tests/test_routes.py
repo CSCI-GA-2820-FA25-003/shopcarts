@@ -18,11 +18,12 @@
 TestShopcart API Service Test Suite
 """
 
-# pylint: disable=duplicate-code
+# pylint: disable=duplicate-code,too-many-lines
 import os
 import logging
 from unittest import TestCase
 from decimal import Decimal
+from datetime import datetime, timezone
 from werkzeug.exceptions import HTTPException
 from wsgi import app
 from service.common import status
@@ -88,6 +89,45 @@ class TestYourResourceService(TestCase):
             test_shopcart.id = new_shopcart["id"]
             shopcarts.append(test_shopcart)
         return shopcarts
+
+    def _create_shopcart_for_customer(
+        self, customer_id: int, status_value: str = "active"
+    ) -> dict:
+        """Create a shopcart for a specific customer via the API."""
+        payload = {"customer_id": customer_id, "status": status_value, "items": []}
+        response = self.client.post(BASE_URL, json=payload)
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_201_CREATED,
+            f"Failed to create shopcart for {customer_id}",
+        )
+        return response.get_json()
+
+    def _create_shopcart_with_created_date(
+        self, created_dt: datetime, status_value: str = "active"
+    ) -> Shopcart:
+        """Persist a shopcart with a specific created_date timestamp."""
+        cart = ShopcartFactory(status=status_value)
+        cart.created_date = created_dt
+        cart.last_modified = created_dt
+        cart.create()
+        return cart
+
+    def _create_cart_with_items(
+        self, customer_id: int, item_specs: list[tuple[int, Decimal, int]]
+    ) -> Shopcart:
+        """Create a cart with provided (product_id, price, quantity) tuples."""
+        cart = self._create_cart(customer_id=customer_id)
+        for idx, (product_id, price, quantity) in enumerate(item_specs):
+            pid = product_id or 1000 + idx
+            self._add_item(
+                cart,
+                product_id=pid,
+                price=Decimal(str(price)),
+                quantity=quantity,
+            )
+        db.session.refresh(cart)
+        return cart
 
     ######################################################################
     #  P L A C E   T E S T   C A S E S   H E R E
@@ -239,6 +279,210 @@ class TestYourResourceService(TestCase):
         self.assertIn("status", first)
         self.assertIn("items", first)
 
+    def test_list_shopcarts_filter_by_status(self):
+        """It should filter shopcarts by status"""
+        self._create_shopcart_for_customer(4001, "active")
+        self._create_shopcart_for_customer(4002, "abandoned")
+        self._create_shopcart_for_customer(4003, "abandoned")
+
+        response = self.client.get(f"{BASE_URL}?status=abandoned")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        data = response.get_json()
+        self.assertEqual(len(data), 2)
+        for entry in data:
+            self.assertEqual(entry["status"], "abandoned")
+
+    def test_list_shopcarts_filter_by_customer_id(self):
+        """It should filter shopcarts by customer id"""
+        self._create_shopcart_for_customer(12345, "active")
+        self._create_shopcart_for_customer(67890, "abandoned")
+
+        response = self.client.get(f"{BASE_URL}?customer_id=12345")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        data = response.get_json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["customer_id"], 12345)
+
+    def test_list_shopcarts_filter_by_status_and_customer(self):
+        """It should combine status and customer id filters"""
+        self._create_shopcart_for_customer(12345, "active")
+        self._create_shopcart_for_customer(54321, "active")
+        self._create_shopcart_for_customer(67890, "abandoned")
+
+        response = self.client.get(f"{BASE_URL}?customer_id=12345&status=active")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        data = response.get_json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["customer_id"], 12345)
+        self.assertEqual(data[0]["status"], "active")
+
+    def test_list_shopcarts_filter_created_before(self):
+        """It should filter carts created before a timestamp"""
+        older = self._create_shopcart_with_created_date(datetime(2024, 1, 1, 12, 0, 0))
+        newer = self._create_shopcart_with_created_date(datetime(2024, 1, 3, 12, 0, 0))
+        cutoff = datetime(2024, 1, 2, 0, 0, 0, tzinfo=timezone.utc).isoformat()
+
+        response = self.client.get(f"{BASE_URL}?created_before={cutoff}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        data = response.get_json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["customer_id"], older.customer_id)
+
+        response = self.client.get(f"{BASE_URL}?created_after={cutoff}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.get_json()
+        self.assertTrue(any(entry["customer_id"] == newer.customer_id for entry in data))
+        self.assertFalse(
+            any(entry["customer_id"] == older.customer_id for entry in data)
+        )
+
+    def test_list_shopcarts_filter_created_between(self):
+        """It should support filtering carts within a created_date range"""
+        early = self._create_shopcart_with_created_date(datetime(2024, 1, 1, 0, 0, 0))
+        middle = self._create_shopcart_with_created_date(datetime(2024, 1, 2, 0, 0, 0))
+        late = self._create_shopcart_with_created_date(datetime(2024, 1, 3, 0, 0, 0))
+
+        start = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc).isoformat()
+        end = datetime(2024, 1, 2, 12, 0, 0, tzinfo=timezone.utc).isoformat()
+        response = self.client.get(
+            f"{BASE_URL}?created_after={start}&created_before={end}"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        data = response.get_json()
+        customer_ids = {entry["customer_id"] for entry in data}
+        self.assertIn(middle.customer_id, customer_ids)
+        self.assertNotIn(early.customer_id, customer_ids)
+        self.assertNotIn(late.customer_id, customer_ids)
+
+    def test_list_shopcarts_invalid_created_filter(self):
+        """It should reject invalid created_before timestamps"""
+        response = self.client.get(f"{BASE_URL}?created_before=not-a-date")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        data = response.get_json()
+        self.assertIn("created_before", data["message"])
+
+    def test_list_shopcarts_filter_returns_empty(self):
+        """It should return an empty list when filters match nothing"""
+        self._create_shopcart_for_customer(1001, "active")
+        self._create_shopcart_for_customer(1002, "active")
+
+        response = self.client.get(f"{BASE_URL}?status=abandoned")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        data = response.get_json()
+        self.assertIsInstance(data, list)
+        self.assertEqual(len(data), 0)
+
+    def test_list_shopcarts_filter_total_price_less_than(self):
+        """It should filter carts with totals below a threshold"""
+        low = self._create_cart_with_items(
+            7001,
+            [
+                (2001, Decimal("10.00"), 2),
+                (2002, Decimal("5.50"), 1),
+            ],
+        )
+        self._create_cart_with_items(
+            7002,
+            [
+                (3001, Decimal("40.00"), 3),
+            ],
+        )
+
+        response = self.client.get(f"{BASE_URL}?total_price_lt=40")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        data = response.get_json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["customer_id"], low.customer_id)
+
+    def test_list_shopcarts_filter_total_price_greater_than(self):
+        """It should filter carts with totals above a threshold"""
+        self._create_cart_with_items(
+            7101,
+            [
+                (3101, Decimal("9.99"), 1),
+            ],
+        )
+        high = self._create_cart_with_items(
+            7102,
+            [
+                (3201, Decimal("50.00"), 2),
+            ],
+        )
+
+        response = self.client.get(f"{BASE_URL}?total_price_gt=80")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.get_json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["customer_id"], high.customer_id)
+
+    def test_list_shopcarts_filter_total_price_range(self):
+        """It should filter carts within a total price range"""
+        self._create_cart_with_items(
+            7201,
+            [
+                (3301, Decimal("5.00"), 2),
+            ],
+        )
+        mid = self._create_cart_with_items(
+            7202,
+            [
+                (3401, Decimal("20.00"), 3),
+            ],
+        )
+        self._create_cart_with_items(
+            7203,
+            [
+                (3501, Decimal("100.00"), 1),
+            ],
+        )
+
+        response = self.client.get(
+            f"{BASE_URL}?total_price_gt=50&total_price_lt=80"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.get_json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["customer_id"], mid.customer_id)
+
+    def test_list_shopcarts_invalid_total_price(self):
+        """It should reject invalid total price filters"""
+        response = self.client.get(f"{BASE_URL}?total_price_lt=not-a-number")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        data = response.get_json()
+        self.assertIn("total_price_lt", data["message"])
+
+        response = self.client.get(f"{BASE_URL}?total_price_lt=50&total_price_gt=60")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        data = response.get_json()
+        self.assertIn("total_price_lt must be greater", data["message"])
+
+    def test_list_shopcarts_invalid_status(self):
+        """It should reject unsupported status filters"""
+        self._create_shopcart_for_customer(2001, "active")
+
+        response = self.client.get(f"{BASE_URL}?status=pending")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        data = response.get_json()
+        self.assertIn("Invalid status", data["message"])
+
+    def test_list_shopcarts_invalid_customer_id(self):
+        """It should reject non-integer customer id filters"""
+        self._create_shopcart_for_customer(2002, "active")
+
+        response = self.client.get(f"{BASE_URL}?customer_id=not-a-number")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        data = response.get_json()
+        self.assertIn("customer_id must be an integer", data["message"])
+
     # ----------------------------------------------------------
     # TEST DELETE
     # ----------------------------------------------------------
@@ -337,8 +581,8 @@ class TestYourResourceService(TestCase):
         )
         self.assertFalse(any(i["product_id"] == 2002 for i in after["items"]))
 
-    def test_checkout_sets_completed_and_updates_last_modified(self):
-        """It should set status=completed and refresh last_modified on checkout"""
+    def test_checkout_sets_abandoned_and_updates_last_modified(self):
+        """It should set status=abandoned and refresh last_modified on checkout"""
         # Create and bulk add items
         payload = {"customer_id": 515151}
         response = self.client.post(BASE_URL, json=payload)
@@ -363,7 +607,7 @@ class TestYourResourceService(TestCase):
         after = response.get_json()
 
         self.assertEqual(after["id"], shopcart_id)
-        self.assertEqual(after["status"], "completed")
+        self.assertEqual(after["status"], "abandoned")
         self.assertIn("last_modified", after)
         self.assertIsNotNone(after["last_modified"])
         if last_modified_before:
@@ -372,6 +616,38 @@ class TestYourResourceService(TestCase):
     def test_checkout_nonexistent_shopcart_returns_404(self):
         """Checkout should return 404 when the cart id does not exist"""
         resp = self.client.put(f"{BASE_URL}/999999/checkout")
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_cancel_shopcart_sets_status_abandoned(self):
+        """Cancelling a cart should mark it abandoned"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        resp = self.client.patch(f"{BASE_URL}/{cart.customer_id}/cancel")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        payload = resp.get_json()
+        self.assertEqual(payload["status"], "abandoned")
+        refreshed = Shopcart.find(cart.id)
+        self.assertEqual(refreshed.status, "abandoned")
+
+    def test_cancel_shopcart_not_found(self):
+        """Cancelling a missing cart returns 404"""
+        resp = self.client.patch(f"{BASE_URL}/404404/cancel")
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_reactivate_shopcart_sets_status_active(self):
+        """Reactivating should restore status to active"""
+        cart = ShopcartFactory(status="abandoned")
+        cart.create()
+        resp = self.client.patch(f"{BASE_URL}/{cart.customer_id}/reactivate")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        payload = resp.get_json()
+        self.assertEqual(payload["status"], "active")
+        refreshed = Shopcart.find(cart.id)
+        self.assertEqual(refreshed.status, "active")
+
+    def test_reactivate_shopcart_not_found(self):
+        """Reactivating a missing cart returns 404"""
+        resp = self.client.patch(f"{BASE_URL}/404404/reactivate")
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_update_shopcart_status_only(self):
@@ -388,7 +664,7 @@ class TestYourResourceService(TestCase):
     def test_update_shopcart_not_found(self):
         """It should return 404 when updating a non-existing shopcart"""
         body = {
-            "status": "completed",
+            "status": "abandoned",
             "items": [{"product_id": 1, "quantity": 1, "price": 1.0}],
         }
         response = self.client.put(f"{BASE_URL}/999999", json=body)
@@ -449,11 +725,11 @@ class TestYourResourceService(TestCase):
         )
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
 
-    def test_update_item_blocked_when_cart_completed(self):
-        """It should block modifications when the cart status is completed"""
+    def test_update_item_blocked_when_cart_abandoned(self):
+        """It should block modifications when the cart status is abandoned"""
         cart = self._create_cart()
         item = self._add_item(cart)
-        cart.status = "completed"
+        cart.status = "abandoned"
         cart.update()
         resp = self.client.patch(
             f"{BASE_URL}/{cart.customer_id}/items/{item.product_id}",
@@ -676,7 +952,7 @@ class TestYourResourceService(TestCase):
 
     def test_update_item_requires_active_cart(self):
         """It should block item updates when the cart is not active"""
-        cart = ShopcartFactory(status="completed")
+        cart = ShopcartFactory(status="abandoned")
         cart.create()
         item = ShopcartItemFactory(
             shopcart_id=cart.id, product_id=4321, quantity=1, price=Decimal("1.00")

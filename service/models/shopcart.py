@@ -16,6 +16,8 @@ EASTERN_ZONE = ZoneInfo("America/New_York")
 class Shopcart(CRUDMixin, db.Model):
     """Represents a customer's shopcart."""
 
+    VALID_STATUSES = frozenset({"active", "abandoned"})
+
     @staticmethod
     def _to_eastern_iso(value):
         """Return an ISO8601 string converted to US Eastern time."""
@@ -295,3 +297,8 @@ class Shopcart(CRUDMixin, db.Model):
         """Returns all Shopcarts with the given status"""
         logger.info("Processing status query for %s ...", status)
         return cls.query.filter(cls.status == status)
+
+    @classmethod
+    def allowed_statuses(cls):
+        """Return the set of valid status values."""
+        return cls.VALID_STATUSES
