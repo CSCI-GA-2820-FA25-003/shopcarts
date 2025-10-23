@@ -21,6 +21,7 @@ Test cases for Shopcart Model
 # pylint: disable=duplicate-code
 import os
 import logging
+from datetime import datetime
 from decimal import Decimal
 from unittest import TestCase
 from unittest.mock import patch
@@ -175,6 +176,14 @@ class TestShopcartModel(TestCase):
         self.assertEqual(data["total_items"], shopcart.total_items)
         self.assertIn("items", data)
         self.assertEqual(len(data["items"]), 1)
+
+    def test_to_eastern_iso_handles_none_and_naive(self):
+        """It should convert naive datetimes to Eastern ISO or return None for empty values"""
+        self.assertIsNone(Shopcart._to_eastern_iso(None))
+        naive = datetime(2024, 1, 1, 12, 0, 0)
+        converted = Shopcart._to_eastern_iso(naive)
+        self.assertTrue(converted.startswith("2024-01-01T07:00:00"))
+        self.assertTrue(converted.endswith("-05:00"))
 
     def test_deserialize_a_shopcart(self):
         """It should de-serialize a Shopcart"""
@@ -332,6 +341,23 @@ class TestShopcartModel(TestCase):
 
         with self.assertRaises(DataValidationError):
             sc.set_items([{"product_id": 1, "quantity": 1, "price": "oops"}])
+
+    def test_upsert_item_handles_missing_reference_on_delete(self):
+        """It should swallow missing list entries when removing an item"""
+        cart = ShopcartFactory()
+        cart.create()
+        item = ShopcartItemFactory(shopcart_id=cart.id, product_id=999, quantity=1)
+        item.create()
+        db.session.refresh(cart)
+        self.assertTrue(cart.items)
+
+        with patch.object(cart.items, "remove", side_effect=ValueError("not present")), patch(
+            "service.models.shopcart.db.session.delete"
+        ) as delete_mock:
+            cart.upsert_item(product_id=item.product_id, quantity=0, price=item.price)
+
+        delete_mock.assert_called_once_with(item)
+        self.assertEqual(cart.total_items, 1)
 
 
 ######################################################################
@@ -502,6 +528,18 @@ class TestShopcartItemModel(TestCase):
         self.assertEqual(item.quantity, 2)
         self.assertEqual(item.price, Decimal("99.99"))
         self.assertEqual(item.description, "Test Product")
+
+    def test_deserialize_item_with_shopcart_id(self):
+        """It should map optional shopcart_id when present"""
+        data = {
+            "product_id": 555,
+            "quantity": 3,
+            "price": 10.50,
+            "shopcart_id": 42,
+        }
+        item = ShopcartItem()
+        item.deserialize(data)
+        self.assertEqual(item.shopcart_id, 42)
 
     def test_deserialize_item_missing_data(self):
         """It should not deserialize a ShopcartItem with missing data"""

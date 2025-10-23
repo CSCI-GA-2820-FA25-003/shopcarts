@@ -22,12 +22,13 @@ TestShopcart API Service Test Suite
 import os
 import logging
 from unittest import TestCase
+from unittest.mock import patch
 from decimal import Decimal
 from datetime import datetime, timezone
 from werkzeug.exceptions import HTTPException
 from wsgi import app
 from service.common import status
-from service.models import db, Shopcart, ShopcartItem
+from service.models import db, Shopcart, ShopcartItem, DataValidationError
 from service.common import error_handlers
 from service import routes
 from .factories import ShopcartFactory, ShopcartItemFactory
@@ -483,6 +484,39 @@ class TestYourResourceService(TestCase):
         data = response.get_json()
         self.assertIn("customer_id must be an integer", data["message"])
 
+    def test_list_shopcarts_blank_status_rejected(self):
+        """It should reject blank status filters"""
+        self._create_shopcart_for_customer(2003, "active")
+        response = self.client.get(f"{BASE_URL}?status=")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("status must be a non-empty value", response.get_json()["message"])
+
+    def test_list_shopcarts_blank_total_price_lt_rejected(self):
+        """It should reject blank total_price_lt filters"""
+        self._create_shopcart_for_customer(2004, "active")
+        response = self.client.get(f"{BASE_URL}?total_price_lt=")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn(
+            "total_price_lt must be a non-empty decimal value",
+            response.get_json()["message"],
+        )
+
+    def test_list_shopcarts_blank_created_before_rejected(self):
+        """It should reject blank created_before filters"""
+        self._create_shopcart_for_customer(2005, "active")
+        response = self.client.get(f"{BASE_URL}?created_before=")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn(
+            "created_before must be a non-empty ISO8601 timestamp",
+            response.get_json()["message"],
+        )
+
+    def test_list_shopcarts_created_after_accepts_naive_timestamp(self):
+        """It should accept naive timestamps and normalize them to UTC"""
+        self._create_shopcart_for_customer(2006, "active")
+        response = self.client.get(f"{BASE_URL}?created_after=2024-01-01T12:00:00")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
     # ----------------------------------------------------------
     # TEST DELETE
     # ----------------------------------------------------------
@@ -695,16 +729,74 @@ class TestYourResourceService(TestCase):
         cart.create()
         return cart
 
-    def _add_item(self, cart, product_id=1234, quantity=1, price=Decimal("2.00")):
+    def _add_item(self, cart, **overrides):
         """Helper to attach an item to the provided cart."""
-        item = ShopcartItemFactory(
-            shopcart_id=cart.id,
-            product_id=product_id,
-            quantity=quantity,
-            price=price,
-        )
+        payload = {
+            "shopcart_id": cart.id,
+            "product_id": overrides.pop("product_id", 1234),
+            "quantity": overrides.pop("quantity", 1),
+            "price": overrides.pop("price", Decimal("2.00")),
+        }
+        description = overrides.pop("description", None)
+        if description is not None:
+            payload["description"] = description
+        if overrides:
+            payload.update(overrides)
+        item = ShopcartItemFactory(**payload)
         item.create()
         return item
+
+    def _setup_cart_with_basic_items(self):
+        """Create a cart populated with deterministic items for filtering tests."""
+        cart = self._create_cart(customer_id=555001)
+        self._add_item(
+            cart,
+            product_id=123,
+            quantity=1,
+            price=Decimal("5.00"),
+            description="Eco-friendly water bottle",
+        )
+        self._add_item(
+            cart,
+            product_id=456,
+            quantity=2,
+            price=Decimal("10.00"),
+            description="Durable hiking backpack",
+        )
+        self._add_item(
+            cart,
+            product_id=789,
+            quantity=5,
+            price=Decimal("25.00"),
+            description="Compact travel mug",
+        )
+        return cart
+
+    def _setup_cart_for_combined_filters(self):
+        """Create a cart tailored for combined filter scenarios."""
+        cart = self._create_cart(customer_id=555002)
+        self._add_item(
+            cart,
+            product_id=123,
+            quantity=2,
+            price=Decimal("15.00"),
+            description="Eco travel essentials kit",
+        )
+        self._add_item(
+            cart,
+            product_id=456,
+            quantity=4,
+            price=Decimal("12.00"),
+            description="Durable rope set",
+        )
+        self._add_item(
+            cart,
+            product_id=789,
+            quantity=1,
+            price=Decimal("30.00"),
+            description="Luxury gift box",
+        )
+        return cart
 
     def test_update_item_not_found_returns_404(self):
         """It should return 404 when product id isn't present in cart"""
@@ -1005,6 +1097,24 @@ class TestYourResourceService(TestCase):
         self.assertEqual(data["product_id"], 100)
         self.assertEqual(data["quantity"], 2)
 
+    def test_add_item_returns_internal_error_when_item_missing(self):
+        """It should surface an internal error if the item cannot be persisted"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        with patch("service.routes.Shopcart.upsert_item", autospec=True):
+            resp = self.client.post(
+                f"{BASE_URL}/{cart.customer_id}/items",
+                json={
+                    "product_id": 9999,
+                    "quantity": 1,
+                    "price": 12.34,
+                    "description": "Transient product",
+                },
+                content_type="application/json",
+            )
+        self.assertEqual(resp.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
+        self.assertIn("Unable to persist cart item.", resp.get_json()["message"])
+
     def test_add_item_requires_product_id(self):
         """It should reject item creation without a product_id"""
         self.client.post(
@@ -1212,6 +1322,151 @@ class TestYourResourceService(TestCase):
         self.assertEqual(data[0]["product_id"], 101)
         self.assertEqual(data[1]["product_id"], 102)
 
+    def test_list_items_filter_by_description(self):
+        """It should filter items by description substring"""
+        cart = self._setup_cart_with_basic_items()
+        resp = self.client.get(
+            f"{BASE_URL}/{cart.customer_id}/items?description=eco"
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.get_json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["product_id"], 123)
+        self.assertIn("eco", data[0]["description"].lower())
+
+    def test_list_items_filter_by_product_id(self):
+        """It should filter items by product_id"""
+        cart = self._setup_cart_with_basic_items()
+        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items?product_id=456")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.get_json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["product_id"], 456)
+
+    def test_list_items_filter_by_quantity(self):
+        """It should filter items by quantity"""
+        cart = self._setup_cart_with_basic_items()
+        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items?quantity=2")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.get_json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["product_id"], 456)
+
+    def test_list_items_filter_by_price_range(self):
+        """It should filter items within a price range"""
+        cart = self._setup_cart_with_basic_items()
+        resp = self.client.get(
+            f"{BASE_URL}/{cart.customer_id}/items?min_price=6&max_price=20"
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.get_json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["product_id"], 456)
+
+    def test_list_items_filter_by_min_price_only(self):
+        """It should filter items by minimum price only"""
+        cart = self._setup_cart_with_basic_items()
+        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items?min_price=10")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.get_json()
+        product_ids = sorted(item["product_id"] for item in data)
+        self.assertEqual(product_ids, [456, 789])
+
+    def test_list_items_filter_by_max_price_only(self):
+        """It should filter items by maximum price only"""
+        cart = self._setup_cart_with_basic_items()
+        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items?max_price=10")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.get_json()
+        product_ids = sorted(item["product_id"] for item in data)
+        self.assertEqual(product_ids, [123, 456])
+
+    def test_list_items_filter_combined(self):
+        """It should combine multiple filters"""
+        cart = self._setup_cart_for_combined_filters()
+        resp = self.client.get(
+            f"{BASE_URL}/{cart.customer_id}/items"
+            "?description=eco&product_id=123&min_price=10&max_price=20"
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.get_json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["product_id"], 123)
+        self.assertIn("eco", data[0]["description"].lower())
+        self.assertGreaterEqual(data[0]["price"], 10.0)
+        self.assertLessEqual(data[0]["price"], 20.0)
+
+    def test_list_items_filter_invalid_min_price(self):
+        """It should reject invalid min_price values"""
+        cart = self._setup_cart_with_basic_items()
+        resp = self.client.get(
+            f"{BASE_URL}/{cart.customer_id}/items?min_price=abc"
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        data = resp.get_json()
+        self.assertIn("min_price must be a number", data["message"])
+
+    def test_list_items_filter_invalid_quantity(self):
+        """It should reject invalid quantity values"""
+        cart = self._setup_cart_with_basic_items()
+        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items?quantity=two")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        data = resp.get_json()
+        self.assertIn("quantity must be an integer", data["message"])
+
+    def test_list_items_filter_unknown_parameter(self):
+        """It should reject unsupported query parameters"""
+        cart = self._setup_cart_with_basic_items()
+        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items?color=red")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        data = resp.get_json()
+        self.assertEqual(
+            data["message"], "color is not a supported filter parameter"
+        )
+
+    def test_list_items_filter_ordering_validation(self):
+        """It should validate min_price is not greater than max_price"""
+        cart = self._setup_cart_with_basic_items()
+        resp = self.client.get(
+            f"{BASE_URL}/{cart.customer_id}/items?min_price=20&max_price=10"
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        data = resp.get_json()
+        self.assertIn("min_price must be less than or equal to max_price", data["message"])
+
+    def test_list_items_filter_empty_result(self):
+        """It should return an empty list when no results match"""
+        cart = self._setup_cart_with_basic_items()
+        resp = self.client.get(
+            f"{BASE_URL}/{cart.customer_id}/items?description=nonexistent"
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.get_json()
+        self.assertEqual(data, [])
+
+    def test_list_items_filter_blank_description_rejected(self):
+        """It should reject blank description filters"""
+        cart = self._setup_cart_with_basic_items()
+        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items?description= ")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("description must be a non-empty string", resp.get_json()["message"])
+
+    def test_list_items_filter_blank_min_price_rejected(self):
+        """It should reject blank numeric price filters"""
+        cart = self._setup_cart_with_basic_items()
+        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items?min_price=")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("min_price must be a number", resp.get_json()["message"])
+
+    def test_list_items_filter_multiple_unknown_parameters(self):
+        """It should reject multiple unsupported parameters with a combined message"""
+        cart = self._setup_cart_with_basic_items()
+        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items?foo=1&bar=2")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            resp.get_json()["message"], "bar, foo are not supported filter parameters"
+        )
+
     def test_list_items_in_nonexistent_shopcart(self):
         """It should return 404 if the shopcart does not exist"""
         resp = self.client.get("/shopcarts/999/items")
@@ -1260,3 +1515,21 @@ class TestYourResourceService(TestCase):
         resp, code = error_handlers.internal_server_error("boom")
         self.assertEqual(code, status.HTTP_500_INTERNAL_SERVER_ERROR)
         self.assertEqual(resp.json["error"], "Internal Server Error")
+
+        resp, code = error_handlers.request_validation_error(
+            DataValidationError("validation failed")
+        )
+        self.assertEqual(code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(resp.json["message"], "validation failed")
+
+        resp, code = error_handlers.forbidden("denied")
+        self.assertEqual(code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(resp.json["message"], "denied")
+
+        resp, code = error_handlers.unauthorized("no auth")
+        self.assertEqual(code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(resp.json["message"], "no auth")
+
+        resp, code = error_handlers.resource_conflict("duplicate")
+        self.assertEqual(code, status.HTTP_409_CONFLICT)
+        self.assertEqual(resp.json["message"], "duplicate")
