@@ -137,9 +137,7 @@ class TestYourResourceService(TestCase):
         self.assertEqual(new_shopcart["total_items"], test_shopcart.total_items)
         self.assertIn("items", new_shopcart)
         # Check that the location header works for customer view
-        response = self.client.get(
-            location, headers={"X-Customer-ID": str(test_shopcart.customer_id)}
-        )
+        response = self.client.get(location)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         new_shopcart = response.get_json()
         self.assertEqual(new_shopcart["customerId"], test_shopcart.customer_id)
@@ -175,10 +173,7 @@ class TestYourResourceService(TestCase):
         )
         item.create()
 
-        response = self.client.get(
-            f"{BASE_URL}/{shopcart.customer_id}",
-            headers={"X-Customer-ID": str(shopcart.customer_id)},
-        )
+        response = self.client.get(f"{BASE_URL}/{shopcart.customer_id}")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.get_json()
         self.assertEqual(data["customerId"], shopcart.customer_id)
@@ -189,79 +184,49 @@ class TestYourResourceService(TestCase):
 
     def test_get_shopcart_not_found(self):
         """It should not Get a Shopcart thats not found"""
-        response = self.client.get(f"{BASE_URL}/0", headers={"X-Customer-ID": "0"})
+        response = self.client.get(f"{BASE_URL}/0")
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         data = response.get_json()
         logging.debug("Response data = %s", data)
         self.assertIn("was not found", data["message"])
 
-    def test_get_shopcart_requires_auth(self):
-        """It should require authentication header for customer read"""
+    def test_get_shopcart_without_auth_header(self):
+        """It should allow reading a shopcart without auth headers"""
         shopcart = ShopcartFactory()
         shopcart.create()
         response = self.client.get(f"{BASE_URL}/{shopcart.customer_id}")
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.get_json()
+        self.assertEqual(data["customerId"], shopcart.customer_id)
 
-    def test_get_shopcart_forbidden(self):
-        """It should forbid customers from reading other carts"""
+    def test_get_shopcart_ignores_customer_mismatch(self):
+        """It should return data even if X-Customer-ID does not match"""
         shopcart = ShopcartFactory()
         shopcart.create()
         response = self.client.get(
             f"{BASE_URL}/{shopcart.customer_id}",
             headers={"X-Customer-ID": str(shopcart.customer_id + 1)},
         )
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.get_json()
+        self.assertEqual(data["customerId"], shopcart.customer_id)
 
     def test_get_shopcart_invalid_header(self):
-        """It should reject non-integer customer headers"""
+        """It should ignore non-integer customer headers"""
         shopcart = ShopcartFactory()
         shopcart.create()
         response = self.client.get(
             f"{BASE_URL}/{shopcart.customer_id}",
             headers={"X-Customer-ID": "not-a-number"},
         )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-
-    def test_admin_get_shopcart_via_customer_endpoint(self):
-        """Admin should be able to use customer endpoint to view any cart"""
-        shopcart = ShopcartFactory()
-        shopcart.create()
-        response = self.client.get(
-            f"{BASE_URL}/{shopcart.customer_id}", headers={"X-Role": "admin"}
-        )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        data = response.get_json()
-        self.assertEqual(data["customerId"], shopcart.customer_id)
-
-    def test_admin_get_shopcart(self):
-        """Admin should be able to view any cart"""
-        shopcart = ShopcartFactory()
-        shopcart.create()
-        response = self.client.get(
-            f"/admin{BASE_URL}/{shopcart.customer_id}", headers={"X-Role": "admin"}
-        )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        data = response.get_json()
-        self.assertEqual(data["customerId"], shopcart.customer_id)
-
-    def test_admin_get_shopcart_forbidden(self):
-        """Non-admins should not access admin endpoint"""
-        response = self.client.get(f"/admin{BASE_URL}/1")
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
-    def test_admin_get_shopcart_not_found(self):
-        """Admins should receive 404 when cart missing"""
-        response = self.client.get(
-            f"/admin{BASE_URL}/9999", headers={"X-Role": "admin"}
-        )
-        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_list_shopcarts(self):
         """It should list all shopcarts"""
         shopcarts = self._create_shopcarts(3)
         self.assertEqual(len(shopcarts), 3)
 
-        response = self.client.get(BASE_URL, headers={"X-Role": "admin"})
+        response = self.client.get(BASE_URL)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         data = response.get_json()
@@ -274,16 +239,6 @@ class TestYourResourceService(TestCase):
         self.assertIn("status", first)
         self.assertIn("items", first)
 
-    def test_list_shopcarts_forbidden_without_admin(self):
-        """It should forbid listing shopcarts without admin role"""
-        shopcarts = self._create_shopcarts(1)
-        self.assertEqual(len(shopcarts), 1)
-
-        response = self.client.get(BASE_URL)
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-        data = response.get_json()
-        self.assertIn("Admin privileges required.", data["message"])
-
     # ----------------------------------------------------------
     # TEST DELETE
     # ----------------------------------------------------------
@@ -295,10 +250,7 @@ class TestYourResourceService(TestCase):
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertEqual(len(response.data), 0)
         # make sure they are deleted
-        response = self.client.get(
-            f"{BASE_URL}/{test_shopcart.customer_id}",
-            headers={"X-Customer-ID": str(test_shopcart.customer_id)},
-        )
+        response = self.client.get(f"{BASE_URL}/{test_shopcart.customer_id}")
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_delete_non_existing_shopcart(self):
@@ -459,12 +411,11 @@ class TestYourResourceService(TestCase):
     # UPDATE AN ITEM
     # ----------------------------------------------------------
 
-    def _create_cart_with_headers(self, customer_id=321):
-        """Helper to create a cart and return (cart, headers)."""
+    def _create_cart(self, customer_id=321):
+        """Helper to create a cart."""
         cart = ShopcartFactory(customer_id=customer_id, status="active")
         cart.create()
-        headers = {"X-Customer-ID": str(cart.customer_id)}
-        return cart, headers
+        return cart
 
     def _add_item(self, cart, product_id=1234, quantity=1, price=Decimal("2.00")):
         """Helper to attach an item to the provided cart."""
@@ -479,40 +430,37 @@ class TestYourResourceService(TestCase):
 
     def test_update_item_not_found_returns_404(self):
         """It should return 404 when product id isn't present in cart"""
-        cart, headers = self._create_cart_with_headers()
+        cart = self._create_cart()
         resp = self.client.patch(
             f"{BASE_URL}/{cart.customer_id}/items/999999",
             json={"quantity": 1},
-            headers=headers,
         )
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_update_item_bad_price_returns_400(self):
         """It should reject item updates when price parsing fails"""
-        cart, headers = self._create_cart_with_headers()
+        cart = self._create_cart()
         item = self._add_item(cart)
         resp = self.client.patch(
             f"{BASE_URL}/{cart.customer_id}/items/{item.product_id}",
             json={"price": "not-a-number"},
-            headers=headers,
         )
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_update_item_blocked_when_cart_completed(self):
         """It should block modifications when the cart status is completed"""
-        cart, headers = self._create_cart_with_headers()
+        cart = self._create_cart()
         item = self._add_item(cart)
         cart.status = "completed"
         cart.update()
         resp = self.client.patch(
             f"{BASE_URL}/{cart.customer_id}/items/{item.product_id}",
             json={"quantity": 2},
-            headers=headers,
         )
         self.assertEqual(resp.status_code, status.HTTP_409_CONFLICT)
 
-    def test_update_item_missing_header_unauthorized(self):
-        """It should require X-Customer-ID header for item updates"""
+    def test_update_item_without_header_allowed(self):
+        """Item updates should work without any auth headers"""
         cart = ShopcartFactory(status="active")
         cart.create()
         item = ShopcartItemFactory(shopcart_id=cart.id)
@@ -521,10 +469,12 @@ class TestYourResourceService(TestCase):
             f"{BASE_URL}/{cart.customer_id}/items/{item.product_id}",
             json={"quantity": 2},
         )
-        self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        payload = resp.get_json()
+        self.assertEqual(payload["total_items"], 2)
 
-    def test_update_item_header_must_be_integer(self):
-        """It should reject requests where X-Customer-ID is not an integer"""
+    def test_update_item_ignores_non_integer_header(self):
+        """Non-integer X-Customer-ID headers should be ignored"""
         cart = ShopcartFactory(status="active")
         cart.create()
         item = ShopcartItemFactory(shopcart_id=cart.id)
@@ -534,14 +484,15 @@ class TestYourResourceService(TestCase):
             json={"quantity": 1},
             headers={"X-Customer-ID": "abc"},
         )
-        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        payload = resp.get_json()
+        self.assertEqual(payload["total_items"], 1)
 
     def test_update_item_cart_not_found(self):
         """It should return 404 when the cart id does not exist"""
         resp = self.client.patch(
             f"{BASE_URL}/999999/items/111",
             json={"quantity": 1},
-            headers={"X-Customer-ID": "999999"},
         )
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
@@ -586,7 +537,6 @@ class TestYourResourceService(TestCase):
         resp = self.client.patch(
             f"{BASE_URL}/{cart.customer_id}/items/777",
             json=body,
-            headers={"X-Customer-ID": str(cart.customer_id)},
         )
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         updated = resp.get_json()
@@ -597,10 +547,7 @@ class TestYourResourceService(TestCase):
         )
 
         # verify customer view totals
-        resp = self.client.get(
-            f"{BASE_URL}/{cart.customer_id}",
-            headers={"X-Customer-ID": str(cart.customer_id)},
-        )
+        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}")
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         view = resp.get_json()
         self.assertEqual(view["totalItems"], 5)
@@ -624,7 +571,6 @@ class TestYourResourceService(TestCase):
         resp = self.client.put(
             f"{BASE_URL}/{cart.customer_id}/items/888",
             json=body,
-            headers={"X-Customer-ID": str(cart.customer_id)},
         )
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         updated = resp.get_json()
@@ -642,10 +588,7 @@ class TestYourResourceService(TestCase):
             )
         )
 
-        resp = self.client.get(
-            f"{BASE_URL}/{cart.customer_id}",
-            headers={"X-Customer-ID": str(cart.customer_id)},
-        )
+        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}")
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         view = resp.get_json()
         self.assertEqual(view["totalItems"], 1)
@@ -664,7 +607,6 @@ class TestYourResourceService(TestCase):
         resp = self.client.patch(
             f"{BASE_URL}/{cart.customer_id}/items/999",
             json={"quantity": 0},
-            headers={"X-Customer-ID": str(cart.customer_id)},
         )
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         updated = resp.get_json()
@@ -679,7 +621,6 @@ class TestYourResourceService(TestCase):
         resp = self.client.patch(
             f"{BASE_URL}/{cart.customer_id}/items/55555",
             json={"quantity": 1},
-            headers={"X-Customer-ID": str(cart.customer_id)},
         )
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
@@ -696,7 +637,6 @@ class TestYourResourceService(TestCase):
         resp = self.client.patch(
             f"{BASE_URL}/{cart.customer_id}/items/2468",
             json={"quantity": "NaN"},
-            headers={"X-Customer-ID": str(cart.customer_id)},
         )
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
 
@@ -704,7 +644,6 @@ class TestYourResourceService(TestCase):
         resp = self.client.patch(
             f"{BASE_URL}/{cart.customer_id}/items/2468",
             json={"quantity": -1},
-            headers={"X-Customer-ID": str(cart.customer_id)},
         )
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
 
@@ -712,12 +651,11 @@ class TestYourResourceService(TestCase):
         resp = self.client.patch(
             f"{BASE_URL}/{cart.customer_id}/items/2468",
             json={"quantity": 1000},
-            headers={"X-Customer-ID": str(cart.customer_id)},
         )
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
 
-    def test_update_item_forbidden_wrong_customer(self):
-        """It should forbid updating an item in someone else's cart"""
+    def test_update_item_allows_different_customer_header(self):
+        """Mismatched X-Customer-ID header should not block updates"""
         cart = ShopcartFactory(status="active")
         cart.create()
         item = ShopcartItemFactory(
@@ -730,7 +668,9 @@ class TestYourResourceService(TestCase):
             json={"quantity": 2},
             headers={"X-Customer-ID": str(cart.customer_id + 1)},
         )
-        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        payload = resp.get_json()
+        self.assertEqual(payload["total_items"], 2)
 
     def test_update_item_requires_active_cart(self):
         """It should block item updates when the cart is not active"""
@@ -744,23 +684,8 @@ class TestYourResourceService(TestCase):
         resp = self.client.patch(
             f"{BASE_URL}/{cart.customer_id}/items/4321",
             json={"quantity": 2},
-            headers={"X-Customer-ID": str(cart.customer_id)},
         )
         self.assertEqual(resp.status_code, status.HTTP_409_CONFLICT)
-
-    def test_update_item_missing_customer_header(self):
-        """Update item should require X-Customer-ID header"""
-        cart = ShopcartFactory(status="active")
-        cart.create()
-        item = ShopcartItemFactory(
-            shopcart_id=cart.id, product_id=1357, quantity=1, price=Decimal("1.00")
-        )
-        item.create()
-
-        resp = self.client.patch(
-            f"{BASE_URL}/{cart.customer_id}/items/1357", json={"quantity": 2}
-        )
-        self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_update_item_invalid_price(self):
         """Price must parse as Decimal"""
@@ -774,7 +699,6 @@ class TestYourResourceService(TestCase):
         resp = self.client.put(
             f"{BASE_URL}/{cart.customer_id}/items/2469",
             json={"price": "not-a-number"},
-            headers={"X-Customer-ID": str(cart.customer_id)},
         )
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
 
