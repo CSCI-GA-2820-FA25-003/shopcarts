@@ -30,6 +30,46 @@ from service.models import Shopcart, ShopcartItem
 from service.common import status  # HTTP Status Codes
 
 
+def _require_product_id(payload):
+    """Extract and validate product_id from payload."""
+    try:
+        return int(payload["product_id"])
+    except (KeyError, TypeError, ValueError):
+        abort(
+            status.HTTP_400_BAD_REQUEST,
+            "product_id is required and must be an integer.",
+        )
+
+
+def _require_quantity_increment(payload):
+    """Ensure quantity is a positive integer increment."""
+    try:
+        increment = int(payload.get("quantity", 0))
+    except (TypeError, ValueError):
+        abort(status.HTTP_400_BAD_REQUEST, "quantity must be an integer.")
+    if increment <= 0:
+        abort(status.HTTP_400_BAD_REQUEST, "quantity must be a positive integer.")
+    return increment
+
+
+def _resolve_price(existing_item, price_raw):
+    """Resolve the price for the incoming payload."""
+    if existing_item and price_raw is None:
+        return Decimal(str(existing_item.price))
+    if price_raw is None:
+        abort(status.HTTP_400_BAD_REQUEST, "price is required.")
+    try:
+        return Decimal(str(price_raw))
+    except (decimal.InvalidOperation, ValueError, TypeError):
+        abort(status.HTTP_400_BAD_REQUEST, "price is invalid.")
+
+
+def _resolve_description(existing_item, payload):
+    """Select description, defaulting to the existing entry."""
+    base = existing_item.description if existing_item else ""
+    return payload.get("description", base or "")
+
+
 ######################################################################
 # GET INDEX
 ######################################################################
@@ -297,42 +337,18 @@ def add_item_to_shopcart(customer_id):
             status.HTTP_404_NOT_FOUND, f"Shopcart for customer {customer_id} not found"
         )
 
-    data = request.get_json() or {}
-    try:
-        product_id = int(data["product_id"])
-    except (KeyError, TypeError, ValueError):
-        abort(status.HTTP_400_BAD_REQUEST, "product_id is required and must be an integer.")
+    payload = request.get_json() or {}
+    product_id = _require_product_id(payload)
+    increment = _require_quantity_increment(payload)
 
-    try:
-        increment = int(data.get("quantity", 0))
-    except (TypeError, ValueError):
-        abort(status.HTTP_400_BAD_REQUEST, "quantity must be an integer.")
-
-    if increment <= 0:
-        abort(status.HTTP_400_BAD_REQUEST, "quantity must be a positive integer.")
-
-    existing = next(
+    existing_item = next(
         (item for item in shopcart.items if item.product_id == product_id),
         None,
     )
 
-    price_raw = data.get("price")
-    if existing and price_raw is None:
-        price = Decimal(str(existing.price))
-    else:
-        if price_raw is None:
-            abort(status.HTTP_400_BAD_REQUEST, "price is required.")
-        try:
-            price = Decimal(str(price_raw))
-        except (decimal.InvalidOperation, ValueError, TypeError):
-            abort(status.HTTP_400_BAD_REQUEST, "price is invalid.")
-
-    if existing:
-        quantity = existing.quantity + increment
-        description = data.get("description", existing.description or "")
-    else:
-        quantity = increment
-        description = data.get("description", "")
+    price = _resolve_price(existing_item, payload.get("price"))
+    quantity = increment + (existing_item.quantity if existing_item else 0)
+    description = _resolve_description(existing_item, payload)
 
     shopcart.upsert_item(
         product_id=product_id,

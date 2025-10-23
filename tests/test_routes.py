@@ -330,6 +330,7 @@ class TestYourResourceService(TestCase):
         after = response.get_json()
 
         # Now only product_id 2001 with quantity=4 should remain
+        self.assertEqual(after["id"], shopcart_id)
         self.assertEqual(after["total_items"], 4)
         self.assertTrue(
             any(i["product_id"] == 2001 and i["quantity"] == 4 for i in after["items"])
@@ -361,6 +362,7 @@ class TestYourResourceService(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         after = response.get_json()
 
+        self.assertEqual(after["id"], shopcart_id)
         self.assertEqual(after["status"], "completed")
         self.assertIn("last_modified", after)
         self.assertIsNotNone(after["last_modified"])

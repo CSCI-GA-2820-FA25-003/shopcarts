@@ -125,6 +125,7 @@ def resource_conflict(error):
         status.HTTP_409_CONFLICT,
     )
 
+
 @app.errorhandler(status.HTTP_500_INTERNAL_SERVER_ERROR)
 def internal_server_error(error):
     """Handles unexpected server error with 500_SERVER_ERROR"""
