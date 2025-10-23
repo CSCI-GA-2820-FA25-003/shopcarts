@@ -30,38 +30,6 @@ from service.models import Shopcart, ShopcartItem
 from service.common import status  # HTTP Status Codes
 
 
-def serialize_shopcart_response(shopcart):
-    """Serializes a shopcart with calculated totals and camelCase keys"""
-    items = []
-    total_quantity = 0
-    total_price = Decimal("0")
-
-    for item in shopcart.items:
-        quantity = item.quantity or 0
-        price = item.price or Decimal("0")
-        total_quantity += quantity
-        total_price += price * quantity
-        items.append(
-            {
-                "itemId": item.id,
-                "productId": item.product_id,
-                "description": item.description,
-                "quantity": quantity,
-                "price": float(price),
-            }
-        )
-
-    return {
-        "customerId": shopcart.customer_id,
-        "createdDate": Shopcart._to_eastern_iso(shopcart.created_date),
-        "lastModified": Shopcart._to_eastern_iso(shopcart.last_modified),
-        "status": shopcart.status,
-        "totalItems": total_quantity,
-        "totalPrice": float(total_price),
-        "items": items,
-    }
-
-
 ######################################################################
 # GET INDEX
 ######################################################################
@@ -135,34 +103,6 @@ def get_shopcarts(customer_id):
     Retrieve a single Shopcart for the given customer
     """
     app.logger.info("Request to Retrieve shopcart for customer [%s]", customer_id)
-    role = request.headers.get("X-Role")
-
-    if role == "admin":
-        shopcart = Shopcart.find_by_customer_id(customer_id).first()
-        if not shopcart:
-            abort(
-                status.HTTP_404_NOT_FOUND,
-                f"Shopcart for customer '{customer_id}' was not found.",
-            )
-
-        response = serialize_shopcart_response(shopcart)
-        app.logger.info("Admin returning shopcart for customer: %s", customer_id)
-        return jsonify(response), status.HTTP_200_OK
-
-    header_customer = request.headers.get("X-Customer-ID")
-    if header_customer is None:
-        abort(status.HTTP_401_UNAUTHORIZED, "Authentication required")
-
-    try:
-        requesting_customer = int(header_customer)
-    except ValueError as error:
-        abort(status.HTTP_400_BAD_REQUEST, f"Invalid customer id header: {error}")
-
-    if requesting_customer != customer_id:
-        abort(
-            status.HTTP_403_FORBIDDEN,
-            "You are not allowed to view another customer's shopcart.",
-        )
 
     # Attempt to find the Shopcart and abort if not found
     shopcart = Shopcart.find_by_customer_id(customer_id).first()
@@ -172,33 +112,8 @@ def get_shopcarts(customer_id):
             f"Shopcart for customer '{customer_id}' was not found.",
         )
 
-    response = serialize_shopcart_response(shopcart)
+    response = shopcart.to_customer_view()
     app.logger.info("Returning shopcart for customer: %s", customer_id)
-    return jsonify(response), status.HTTP_200_OK
-
-
-######################################################################
-# READ A SHOPCART (Admin)
-######################################################################
-@app.route("/admin/shopcarts/<int:customer_id>", methods=["GET"])
-def admin_get_shopcart(customer_id):
-    """
-    Retrieve any customer's shopcart for admin users
-    """
-    app.logger.info("Admin request to Retrieve shopcart for customer [%s]", customer_id)
-
-    role = request.headers.get("X-Role")
-    if role != "admin":
-        abort(status.HTTP_403_FORBIDDEN, "Admin privileges required.")
-
-    shopcart = Shopcart.find_by_customer_id(customer_id).first()
-    if not shopcart:
-        abort(
-            status.HTTP_404_NOT_FOUND,
-            f"Shopcart for customer '{customer_id}' was not found.",
-        )
-
-    response = serialize_shopcart_response(shopcart)
     return jsonify(response), status.HTTP_200_OK
 
 
@@ -300,22 +215,12 @@ def update_shopcart_item(customer_id: int, product_id: int):
     """
     Update a single item in a shopcart
     """
-    header_val = request.headers.get("X-Customer-ID")
-    if header_val is None:
-        abort(status.HTTP_401_UNAUTHORIZED, "Missing X-Customer-ID header.")
-    try:
-        requester_id = int(header_val)
-    except (TypeError, ValueError):
-        abort(status.HTTP_400_BAD_REQUEST, "X-Customer-ID must be an integer.")
-
     shopcart = Shopcart.find_by_customer_id(customer_id).first()
     if not shopcart:
         abort(
             status.HTTP_404_NOT_FOUND,
             f"Shopcart for customer '{customer_id}' was not found.",
         )
-    if requester_id != int(shopcart.customer_id):
-        abort(status.HTTP_403_FORBIDDEN, "You can only update your own shopcart.")
 
     check_content_type("application/json")
     payload = request.get_json() or {}
@@ -372,10 +277,6 @@ def list_shopcarts():
     """
     Retrieve all Shopcarts
     """
-    role = request.headers.get("X-Role")
-    if role != "admin":
-        abort(status.HTTP_403_FORBIDDEN, "Admin privileges required.")
-
     app.logger.info("Request to list all shopcarts")
     shopcarts = Shopcart.all()
     results = [shopcart.serialize() for shopcart in shopcarts]

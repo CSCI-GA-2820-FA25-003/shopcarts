@@ -96,6 +96,21 @@ def forbidden(error):
     )
 
 
+@app.errorhandler(status.HTTP_401_UNAUTHORIZED)
+def unauthorized(error):
+    """Handles missing or bad credentials with 401_UNAUTHORIZED"""
+    message = str(error)
+    app.logger.warning(message)
+    return (
+        jsonify(
+            status=status.HTTP_401_UNAUTHORIZED,
+            error="Unauthorized",
+            message=message,
+        ),
+        status.HTTP_401_UNAUTHORIZED,
+    )
+
+
 @app.errorhandler(status.HTTP_409_CONFLICT)
 def resource_conflict(error):
     """Handles conflicts with 409_CONFLICT"""

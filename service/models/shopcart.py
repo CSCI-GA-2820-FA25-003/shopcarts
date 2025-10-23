@@ -4,6 +4,7 @@ Shopcart model definition.
 import decimal
 import logging
 from datetime import datetime, timezone
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from .base import CRUDMixin, DataValidationError, db
@@ -104,6 +105,37 @@ class Shopcart(CRUDMixin, db.Model):
             "status": self.status,
             "total_items": self.total_items,
             "items": [item.serialize() for item in self.items],
+        }
+
+    def to_customer_view(self):
+        """Return an API-facing representation with computed totals and camelCase keys."""
+        items = []
+        total_quantity = 0
+        total_price = Decimal("0")
+
+        for item in getattr(self, "items", []):
+            quantity = int(item.quantity or 0)
+            price = item.price or Decimal("0")
+            total_quantity += quantity
+            total_price += price * quantity
+            items.append(
+                {
+                    "itemId": item.id,
+                    "productId": item.product_id,
+                    "description": item.description,
+                    "quantity": quantity,
+                    "price": float(price),
+                }
+            )
+
+        return {
+            "customerId": self.customer_id,
+            "createdDate": self._to_eastern_iso(self.created_date),
+            "lastModified": self._to_eastern_iso(self.last_modified),
+            "status": self.status,
+            "totalItems": total_quantity,
+            "totalPrice": float(total_price),
+            "items": items,
         }
 
     def deserialize(self, data):
