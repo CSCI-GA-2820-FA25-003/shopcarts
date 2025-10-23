@@ -653,6 +653,95 @@ def delete_item_from_shopcart(customer_id, product_id):
 ##############################################
 # LIST ALL ITEMS IN A SHOPCART
 ##############################################
+ITEM_FILTER_FIELDS = {"description", "product_id", "min_price", "max_price", "quantity"}
+
+
+@dataclass
+class ItemFilters:
+    """Container for shopcart item filters."""
+
+    description: str | None = None
+    product_id: int | None = None
+    min_price: Decimal | None = None
+    max_price: Decimal | None = None
+    quantity: int | None = None
+
+
+def _parse_price_bound(value: str, field: str) -> Decimal:
+    """Parse a numeric price boundary from the request."""
+    cleaned = (value or "").strip()
+    if not cleaned:
+        abort(status.HTTP_400_BAD_REQUEST, f"{field} must be a number")
+    try:
+        return Decimal(cleaned)
+    except (decimal.InvalidOperation, ValueError, TypeError):
+        abort(status.HTTP_400_BAD_REQUEST, f"{field} must be a number")
+
+
+def _normalize_description_filter(value) -> str | None:
+    """Normalize a description filter, validating non-empty input."""
+    if value is None:
+        return None
+    description = str(value).strip()
+    if not description:
+        abort(
+            status.HTTP_400_BAD_REQUEST,
+            "description must be a non-empty string when provided",
+        )
+    return description
+
+
+def _parse_optional_int(args, field: str, error_message: str) -> int | None:
+    """Parse an optional integer query parameter."""
+    if field not in args:
+        return None
+    try:
+        return int(args.get(field))
+    except (TypeError, ValueError):
+        abort(status.HTTP_400_BAD_REQUEST, error_message)
+
+
+def _parse_item_filters(args) -> ItemFilters:
+    """Validate and normalize query params for item listing."""
+    unsupported = sorted(set(args.keys()) - ITEM_FILTER_FIELDS)
+    if unsupported:
+        if len(unsupported) == 1:
+            abort(
+                status.HTTP_400_BAD_REQUEST,
+                f"{unsupported[0]} is not a supported filter parameter",
+            )
+        joined = ", ".join(unsupported)
+        abort(
+            status.HTTP_400_BAD_REQUEST,
+            f"{joined} are not supported filter parameters",
+        )
+
+    filters = ItemFilters()
+    filters.description = _normalize_description_filter(args.get("description"))
+    filters.product_id = _parse_optional_int(
+        args, "product_id", "product_id must be an integer"
+    )
+    filters.quantity = _parse_optional_int(
+        args, "quantity", "quantity must be an integer"
+    )
+    if "min_price" in args:
+        filters.min_price = _parse_price_bound(args.get("min_price"), "min_price")
+    if "max_price" in args:
+        filters.max_price = _parse_price_bound(args.get("max_price"), "max_price")
+
+    if (
+        filters.min_price is not None
+        and filters.max_price is not None
+        and filters.min_price > filters.max_price
+    ):
+        abort(
+            status.HTTP_400_BAD_REQUEST,
+            "min_price must be less than or equal to max_price",
+        )
+
+    return filters
+
+
 @app.route("/shopcarts/<int:customer_id>/items", methods=["GET"])
 def list_items_in_shopcart(customer_id):
     """List all items in a customer's shopcart"""
@@ -665,10 +754,21 @@ def list_items_in_shopcart(customer_id):
             status.HTTP_404_NOT_FOUND, f"Shopcart for customer {customer_id} not found"
         )
 
-    # all items in the shopcart
-    items = ShopcartItem.find_by_shopcart_id(shopcart.id)
+    filters = _parse_item_filters(request.args)
+    query = ShopcartItem.find_by_shopcart_id(shopcart.id)
+    if filters.description is not None:
+        query = query.filter(ShopcartItem.description.ilike(f"%{filters.description}%"))
+    if filters.product_id is not None:
+        query = query.filter(ShopcartItem.product_id == filters.product_id)
+    if filters.quantity is not None:
+        query = query.filter(ShopcartItem.quantity == filters.quantity)
+    if filters.min_price is not None:
+        query = query.filter(ShopcartItem.price >= filters.min_price)
+    if filters.max_price is not None:
+        query = query.filter(ShopcartItem.price <= filters.max_price)
 
     # convert to list of dicts
+    items = query.order_by(ShopcartItem.id).all()
     results = [item.serialize() for item in items]
     return jsonify(results), status.HTTP_200_OK
 
