@@ -821,6 +821,41 @@ def list_items_in_shopcart(customer_id):
     return jsonify(results), status.HTTP_200_OK
 
 
+##############################################
+# SHOPCART TOTALS
+##############################################
+@app.route("/shopcarts/<int:customer_id>/totals", methods=["GET"])
+def get_shopcart_totals(customer_id: int):
+    """Return aggregated totals for a customer's shopcart."""
+    app.logger.info("Request to compute totals for shopcart of customer %s", customer_id)
+
+    shopcart = Shopcart.find_by_customer_id(customer_id).first()
+    if not shopcart:
+        abort(
+            status.HTTP_404_NOT_FOUND,
+            f"Shopcart for customer {customer_id} not found",
+        )
+
+    total_quantity = 0
+    subtotal = Decimal("0")
+    for item in getattr(shopcart, "items", []):
+        quantity = int(getattr(item, "quantity", 0) or 0)
+        price = item.price if isinstance(item.price, Decimal) else Decimal(str(item.price or 0))
+        total_quantity += quantity
+        subtotal += price * quantity
+
+    discount = Decimal("0")
+    aggregate = {
+        "customer_id": customer_id,
+        "item_count": len(getattr(shopcart, "items", [])),
+        "total_quantity": total_quantity,
+        "subtotal": float(subtotal),
+        "discount": float(discount),
+        "total": float(subtotal - discount),
+    }
+    return jsonify(aggregate), status.HTTP_200_OK
+
+
 def _parse_iso8601_to_utc(value: str, field: str) -> datetime:
     """Parse an ISO8601 string into a UTC naive datetime for database comparison."""
     cleaned = (value or "").strip()
