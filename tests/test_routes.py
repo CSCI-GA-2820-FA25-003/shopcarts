@@ -1516,6 +1516,42 @@ class TestYourResourceService(TestCase):
             resp.get_json()["message"], "bar, foo are not supported filter parameters"
         )
 
+    def test_get_shopcart_totals_returns_aggregates(self):
+        """It should return aggregated totals for a cart"""
+        cart = self._create_cart_with_items(
+            8601,
+            [
+                (4001, Decimal("9.99"), 2),
+                (4002, Decimal("5.00"), 1),
+            ],
+        )
+        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/totals")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.get_json()
+        self.assertEqual(data["customer_id"], cart.customer_id)
+        self.assertEqual(data["item_count"], 2)
+        self.assertEqual(data["total_quantity"], 3)
+        self.assertAlmostEqual(data["subtotal"], 24.98, places=2)
+        self.assertAlmostEqual(data["discount"], 0.0, places=2)
+        self.assertAlmostEqual(data["total"], 24.98, places=2)
+
+    def test_get_shopcart_totals_for_empty_cart(self):
+        """It should return zero totals when the cart has no items"""
+        cart = self._create_cart(customer_id=8602)
+        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/totals")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.get_json()
+        self.assertEqual(data["item_count"], 0)
+        self.assertEqual(data["total_quantity"], 0)
+        self.assertEqual(data["subtotal"], 0.0)
+        self.assertEqual(data["discount"], 0.0)
+        self.assertEqual(data["total"], 0.0)
+
+    def test_get_shopcart_totals_not_found(self):
+        """It should return 404 when the cart does not exist"""
+        resp = self.client.get(f"{BASE_URL}/999999/totals")
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
     def test_list_items_in_nonexistent_shopcart(self):
         """It should return 404 if the shopcart does not exist"""
         resp = self.client.get("/shopcarts/999/items")
