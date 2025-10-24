@@ -397,6 +397,54 @@ def cancel_shopcart(customer_id: int):
 
 
 ######################################################################
+# LOCK A SHOPCART
+######################################################################
+@app.route("/shopcarts/<int:customer_id>/lock", methods=["PATCH"])
+def lock_shopcart(customer_id: int):
+    """
+    Mark the specified shopcart as locked for downstream processing.
+    """
+    app.logger.info("Request to lock shopcart for customer [%s]", customer_id)
+    shopcart = Shopcart.find_by_customer_id(customer_id).first()
+    if not shopcart:
+        abort(
+            status.HTTP_404_NOT_FOUND,
+            f"Shopcart for customer '{customer_id}' was not found.",
+        )
+    current_status = (shopcart.status or "").strip().lower()
+    if current_status != "locked":
+        shopcart.status = "locked"
+        shopcart.last_modified = datetime.utcnow()
+        shopcart.update()
+    app.logger.info("Shopcart for customer [%s] locked.", customer_id)
+    return jsonify(shopcart.serialize()), status.HTTP_200_OK
+
+
+######################################################################
+# EXPIRE A SHOPCART
+######################################################################
+@app.route("/shopcarts/<int:customer_id>/expire", methods=["PATCH"])
+def expire_shopcart(customer_id: int):
+    """
+    Mark the specified shopcart as expired and no longer actionable.
+    """
+    app.logger.info("Request to expire shopcart for customer [%s]", customer_id)
+    shopcart = Shopcart.find_by_customer_id(customer_id).first()
+    if not shopcart:
+        abort(
+            status.HTTP_404_NOT_FOUND,
+            f"Shopcart for customer '{customer_id}' was not found.",
+        )
+    current_status = (shopcart.status or "").strip().lower()
+    if current_status != "expired":
+        shopcart.status = "expired"
+        shopcart.last_modified = datetime.utcnow()
+        shopcart.update()
+    app.logger.info("Shopcart for customer [%s] expired.", customer_id)
+    return jsonify(shopcart.serialize()), status.HTTP_200_OK
+
+
+######################################################################
 # REACTIVATE A SHOPCART
 ######################################################################
 @app.route("/shopcarts/<int:customer_id>/reactivate", methods=["PATCH"])

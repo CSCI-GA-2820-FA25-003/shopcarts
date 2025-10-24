@@ -379,6 +379,19 @@ class TestYourResourceService(TestCase):
         self.assertIsInstance(data, list)
         self.assertEqual(len(data), 0)
 
+    def test_list_shopcarts_filter_by_locked_status(self):
+        """It should return carts when filtering by locked status"""
+        active_cart = ShopcartFactory(status="active")
+        active_cart.create()
+        locked_cart = ShopcartFactory(status="locked")
+        locked_cart.create()
+        response = self.client.get(f"{BASE_URL}?status=locked")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.get_json()
+        self.assertTrue(all(cart["status"] == "locked" for cart in data))
+        self.assertTrue(any(cart["customer_id"] == locked_cart.customer_id for cart in data))
+        self.assertFalse(any(cart["customer_id"] == active_cart.customer_id for cart in data))
+
     def test_list_shopcarts_filter_total_price_less_than(self):
         """It should filter carts with totals below a threshold"""
         low = self._create_cart_with_items(
@@ -666,6 +679,42 @@ class TestYourResourceService(TestCase):
     def test_cancel_shopcart_not_found(self):
         """Cancelling a missing cart returns 404"""
         resp = self.client.patch(f"{BASE_URL}/404404/cancel")
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_lock_shopcart_sets_status_locked(self):
+        """Locking a cart should mark it locked and refresh last_modified"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        initial_last_modified = cart.last_modified.isoformat()
+        resp = self.client.patch(f"{BASE_URL}/{cart.customer_id}/lock")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        payload = resp.get_json()
+        self.assertEqual(payload["status"], "locked")
+        self.assertNotEqual(payload["last_modified"], initial_last_modified)
+        refreshed = Shopcart.find(cart.id)
+        self.assertEqual(refreshed.status, "locked")
+
+    def test_lock_shopcart_not_found(self):
+        """Lock should return 404 when the cart id does not exist"""
+        resp = self.client.patch(f"{BASE_URL}/999999/lock")
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_expire_shopcart_sets_status_expired(self):
+        """Expiring a cart should mark it expired and refresh last_modified"""
+        cart = ShopcartFactory(status="locked")
+        cart.create()
+        initial_last_modified = cart.last_modified.isoformat()
+        resp = self.client.patch(f"{BASE_URL}/{cart.customer_id}/expire")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        payload = resp.get_json()
+        self.assertEqual(payload["status"], "expired")
+        self.assertNotEqual(payload["last_modified"], initial_last_modified)
+        refreshed = Shopcart.find(cart.id)
+        self.assertEqual(refreshed.status, "expired")
+
+    def test_expire_shopcart_not_found(self):
+        """Expire should return 404 when the cart id does not exist"""
+        resp = self.client.patch(f"{BASE_URL}/999999/expire")
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_reactivate_shopcart_sets_status_active(self):

@@ -16,7 +16,7 @@ EASTERN_ZONE = ZoneInfo("America/New_York")
 class Shopcart(CRUDMixin, db.Model):
     """Represents a customer's shopcart."""
 
-    VALID_STATUSES = frozenset({"active", "abandoned"})
+    VALID_STATUSES = frozenset({"active", "abandoned", "locked", "expired"})
 
     @staticmethod
     def _to_eastern_iso(value):
