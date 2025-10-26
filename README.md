@@ -1,4 +1,5 @@
 [![Build Status](https://github.com/CSCI-GA-2820-FA25-003/shopcarts/actions/workflows/workflow.yml/badge.svg)](https://github.com/CSCI-GA-2820-FA25-003/shopcarts/actions)
+[![codecov](https://codecov.io/gh/CSCI-GA-2820-FA25-003/shopcarts/graph/badge.svg?token=9AM1PN2UYK)](https://codecov.io/gh/CSCI-GA-2820-FA25-003/shopcarts)
 
 # Shopcart REST API Service
 
