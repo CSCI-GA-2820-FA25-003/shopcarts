@@ -1,3 +1,5 @@
+[![Build Status](https://github.com/CSCI-GA-2820-FA25-003/shopcarts/actions/workflows/workflow.yml/badge.svg)](https://github.com/CSCI-GA-2820-FA25-003/shopcarts/actions)
+
 # Shopcart REST API Service
 
 This project implements a Flask-based REST API for managing customer shopcarts and their items. It is the reference implementation used in the NYU DevOps course and extends the original project template with a working service, database models, and automated tests.
