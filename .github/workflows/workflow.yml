@@ -65,4 +65,4 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          slug: CSCI-GA-2820-FA25-003/promotions
+          slug: CSCI-GA-2820-FA25-003/shopcarts
