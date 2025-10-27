@@ -1,38 +1,38 @@
 #!/usr/bin/env python3
 """
 Database Model Demo Script for Sprint Review
-展示database model的核心功能和设计亮点
+Demonstrates core functionality and design highlights of database models
 """
 
 import requests
 import json
 import time
 
-# API基础URL
+# API Base URL
 BASE_URL = "http://127.0.0.1:8080"
 
 def demo_database_models():
-    """演示database model的核心功能"""
+    """Demonstrate core functionality of database models"""
     
     print("🎯 Database Model Demo - Sprint Review")
     print("=" * 50)
     
-    # 1. 测试服务状态
-    print("\n1. 检查服务状态...")
+    # 1. Test Service Status
+    print("\n1. Checking service status...")
     try:
         response = requests.get(f"{BASE_URL}/")
         if response.status_code == 200:
-            print("✅ 服务运行正常")
-            print(f"   服务信息: {response.json()}")
+            print("✅ Service is running normally")
+            print(f"   Service Info: {response.json()}")
         else:
-            print("❌ 服务未响应")
+            print("❌ Service is not responding")
             return
     except Exception as e:
-        print(f"❌ 连接失败: {e}")
+        print(f"❌ Connection failed: {e}")
         return
     
-    # 2. 创建购物车 - 展示Shopcart模型
-    print("\n2. 创建购物车 (Shopcart Model)...")
+    # 2. Create Shopcart - Demonstrate Shopcart Model
+    print("\n2. Creating shopcart (Shopcart Model)...")
     shopcart_data = {
         "customer_id": 12345,
         "status": "active",
@@ -48,21 +48,21 @@ def demo_database_models():
         
         if response.status_code == 201:
             shopcart = response.json()
-            print("✅ 购物车创建成功")
-            print(f"   购物车ID: {shopcart['id']}")
-            print(f"   客户ID: {shopcart['customer_id']}")
-            print(f"   状态: {shopcart['status']}")
-            print(f"   创建时间: {shopcart['created_date']}")
+            print("✅ Shopcart created successfully")
+            print(f"   Shopcart ID: {shopcart['id']}")
+            print(f"   Customer ID: {shopcart['customer_id']}")
+            print(f"   Status: {shopcart['status']}")
+            print(f"   Created Date: {shopcart['created_date']}")
         else:
-            print(f"❌ 创建失败: {response.status_code} - {response.text}")
+            print(f"❌ Creation failed: {response.status_code} - {response.text}")
             return
             
     except Exception as e:
-        print(f"❌ 创建购物车失败: {e}")
+        print(f"❌ Failed to create shopcart: {e}")
         return
     
-    # 3. 添加商品 - 展示ShopcartItem模型
-    print("\n3. 添加商品到购物车 (ShopcartItem Model)...")
+    # 3. Add Items - Demonstrate ShopcartItem Model
+    print("\n3. Adding items to shopcart (ShopcartItem Model)...")
     
     items_to_add = [
         {
@@ -95,20 +95,20 @@ def demo_database_models():
             
             if response.status_code == 201:
                 created_item = response.json()
-                print(f"✅ 商品 {i} 添加成功")
-                print(f"   商品ID: {created_item['id']}")
-                print(f"   产品ID: {created_item['product_id']}")
-                print(f"   数量: {created_item['quantity']}")
-                print(f"   价格: ${created_item['price']}")
-                print(f"   描述: {created_item['description']}")
+                print(f"✅ Item {i} added successfully")
+                print(f"   Item ID: {created_item['id']}")
+                print(f"   Product ID: {created_item['product_id']}")
+                print(f"   Quantity: {created_item['quantity']}")
+                print(f"   Price: ${created_item['price']}")
+                print(f"   Description: {created_item['description']}")
             else:
-                print(f"❌ 添加商品 {i} 失败: {response.status_code} - {response.text}")
+                print(f"❌ Failed to add item {i}: {response.status_code} - {response.text}")
                 
         except Exception as e:
-            print(f"❌ 添加商品 {i} 失败: {e}")
+            print(f"❌ Failed to add item {i}: {e}")
     
-    # 4. 查看完整购物车 - 展示关系映射
-    print("\n4. 查看完整购物车 (Relationship Mapping)...")
+    # 4. View Complete Shopcart - Demonstrate Relationship Mapping
+    print("\n4. Viewing complete shopcart (Relationship Mapping)...")
     try:
         response = requests.get(
             f"{BASE_URL}/shopcarts/12345",
@@ -117,25 +117,25 @@ def demo_database_models():
         
         if response.status_code == 200:
             shopcart = response.json()
-            print("✅ 购物车详情获取成功")
-            print(f"   购物车ID: {shopcart['id']}")
-            print(f"   客户ID: {shopcart['customer_id']}")
-            print(f"   状态: {shopcart['status']}")
-            print(f"   总商品数: {shopcart['total_items']}")
-            print(f"   最后修改: {shopcart['last_modified']}")
-            print(f"   商品列表:")
+            print("✅ Shopcart details retrieved successfully")
+            print(f"   Shopcart ID: {shopcart['id']}")
+            print(f"   Customer ID: {shopcart['customer_id']}")
+            print(f"   Status: {shopcart['status']}")
+            print(f"   Total Items: {shopcart['total_items']}")
+            print(f"   Last Modified: {shopcart['last_modified']}")
+            print(f"   Item List:")
             
             for item in shopcart['items']:
                 print(f"     - {item['description']} (ID: {item['product_id']})")
-                print(f"       数量: {item['quantity']}, 价格: ${item['price']}")
+                print(f"       Quantity: {item['quantity']}, Price: ${item['price']}")
         else:
-            print(f"❌ 获取购物车失败: {response.status_code} - {response.text}")
+            print(f"❌ Failed to retrieve shopcart: {response.status_code} - {response.text}")
             
     except Exception as e:
-        print(f"❌ 获取购物车失败: {e}")
+        print(f"❌ Failed to retrieve shopcart: {e}")
     
-    # 5. 更新商品数量 - 展示upsert功能
-    print("\n5. 更新商品数量 (Upsert Functionality)...")
+    # 5. Update Item Quantity - Demonstrate Upsert Functionality
+    print("\n5. Updating item quantity (Upsert Functionality)...")
     try:
         update_data = {
             "quantity": 5,
@@ -151,30 +151,30 @@ def demo_database_models():
         
         if response.status_code == 200:
             updated_item = response.json()
-            print("✅ 商品更新成功")
-            print(f"   新数量: {updated_item['quantity']}")
-            print(f"   新描述: {updated_item['description']}")
+            print("✅ Item updated successfully")
+            print(f"   New Quantity: {updated_item['quantity']}")
+            print(f"   New Description: {updated_item['description']}")
         else:
-            print(f"❌ 更新商品失败: {response.status_code} - {response.text}")
+            print(f"❌ Failed to update item: {response.status_code} - {response.text}")
             
     except Exception as e:
-        print(f"❌ 更新商品失败: {e}")
+        print(f"❌ Failed to update item: {e}")
     
-    # 6. 删除商品 - 展示删除功能
-    print("\n6. 删除商品 (Delete Functionality)...")
+    # 6. Delete Item - Demonstrate Delete Functionality
+    print("\n6. Deleting item (Delete Functionality)...")
     try:
         response = requests.delete(f"{BASE_URL}/shopcarts/12345/items/1003")
         
         if response.status_code == 204:
-            print("✅ 商品删除成功")
+            print("✅ Item deleted successfully")
         else:
-            print(f"❌ 删除商品失败: {response.status_code} - {response.text}")
+            print(f"❌ Failed to delete item: {response.status_code} - {response.text}")
             
     except Exception as e:
-        print(f"❌ 删除商品失败: {e}")
+        print(f"❌ Failed to delete item: {e}")
     
-    # 7. 最终购物车状态
-    print("\n7. 最终购物车状态...")
+    # 7. Final Shopcart Status
+    print("\n7. Final shopcart status...")
     try:
         response = requests.get(
             f"{BASE_URL}/shopcarts/12345",
@@ -183,27 +183,27 @@ def demo_database_models():
         
         if response.status_code == 200:
             shopcart = response.json()
-            print("✅ 最终状态:")
-            print(f"   总商品数: {shopcart['total_items']}")
-            print(f"   商品数量: {len(shopcart['items'])}")
+            print("✅ Final Status:")
+            print(f"   Total Items: {shopcart['total_items']}")
+            print(f"   Item Count: {len(shopcart['items'])}")
             for item in shopcart['items']:
                 print(f"     - {item['description']}: {item['quantity']} x ${item['price']}")
         else:
-            print(f"❌ 获取最终状态失败: {response.status_code}")
+            print(f"❌ Failed to retrieve final status: {response.status_code}")
             
     except Exception as e:
-        print(f"❌ 获取最终状态失败: {e}")
+        print(f"❌ Failed to retrieve final status: {e}")
     
     print("\n" + "=" * 50)
-    print("🎉 Database Model Demo 完成!")
-    print("\n技术亮点总结:")
-    print("✅ Shopcart模型 - 购物车管理")
-    print("✅ ShopcartItem模型 - 商品管理") 
-    print("✅ 关系映射 - One-to-Many关系")
-    print("✅ 数据验证 - 完整的错误处理")
-    print("✅ 序列化/反序列化 - JSON转换")
-    print("✅ CRUD操作 - 创建、读取、更新、删除")
-    print("✅ 业务逻辑 - 智能的upsert功能")
+    print("🎉 Database Model Demo Completed!")
+    print("\nTechnical Highlights Summary:")
+    print("✅ Shopcart Model - Shopcart Management")
+    print("✅ ShopcartItem Model - Item Management") 
+    print("✅ Relationship Mapping - One-to-Many Relationship")
+    print("✅ Data Validation - Complete Error Handling")
+    print("✅ Serialization/Deserialization - JSON Conversion")
+    print("✅ CRUD Operations - Create, Read, Update, Delete")
+    print("✅ Business Logic - Smart Upsert Functionality")
 
 if __name__ == "__main__":
     demo_database_models()
