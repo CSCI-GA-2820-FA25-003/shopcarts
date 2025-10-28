@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shopcarts
+  namespace: shopcarts
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: shopcarts
+  template:
+    metadata:
+      labels:
+        app: shopcarts
+    spec:
+      containers:
+      - name: shopcarts
+        image: cluster-registry:5001/petshop:1.0
+        ports:
+        - containerPort: 8080
+        env:
+        - name: DATABASE_URI
+          valueFrom:
+            configMapKeyRef:
+              name: shopcarts-config
+              key: DATABASE_URI
+        - name: PORT
+          valueFrom:
+            configMapKeyRef:
+              name: shopcarts-config
+              key: PORT
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: shopcarts
+  namespace: shopcarts
+spec:
+  selector:
+    app: shopcarts
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8080
+  type: ClusterIP
+
