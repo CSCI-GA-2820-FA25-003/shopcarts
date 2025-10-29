@@ -4,6 +4,5 @@ metadata:
   name: shopcarts-config
   namespace: shopcarts
 data:
-  DATABASE_URI: postgresql+psycopg://postgres:postgres@postgres:5432/postgres
+  DATABASE_URI: postgresql+psycopg://postgres:postgres@postgres:5432/shopcarts
   PORT: "8080"
-

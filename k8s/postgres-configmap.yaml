@@ -4,6 +4,5 @@ metadata:
   name: postgres-config
   namespace: shopcarts
 data:
-  POSTGRES_DB: postgres
+  POSTGRES_DB: shopcarts
   POSTGRES_USER: postgres
-
