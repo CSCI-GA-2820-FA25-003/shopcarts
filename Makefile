@@ -1,8 +1,9 @@
 # These can be overidden with env vars.
-REGISTRY ?= cluster-registry:5001
+REGISTRY ?= docker.io
+ORG ?= your-username
 IMAGE_NAME ?= shopcarts
 IMAGE_TAG ?= 1.0
-IMAGE ?= $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
+IMAGE ?= $(REGISTRY)/$(ORG)/$(IMAGE_NAME):$(IMAGE_TAG)
 PLATFORM ?= "linux/amd64,linux/arm64"
 CLUSTER ?= nyu-devops
 
@@ -93,6 +94,21 @@ deploy: build cluster-import-image ## Deploy the service on local Kubernetes
 	@kubectl wait --for=condition=Ready pods -l app=postgres -n shopcarts --timeout=120s
 	@kubectl wait --for=condition=Available deployment/shopcarts -n shopcarts --timeout=120s
 
+.PHONY: undeploy
+undeploy: ## Remove all Kubernetes resources
+	$(info Removing Kubernetes resources...)
+	kubectl delete -f k8s/ingress.yaml --ignore-not-found=true
+	kubectl delete -f k8s/shopcarts-deployment.yaml --ignore-not-found=true
+	kubectl delete -f k8s/shopcarts-configmap.yaml --ignore-not-found=true
+	kubectl delete -f k8s/postgres/statefulset.yaml --ignore-not-found=true
+	kubectl delete -f k8s/postgres/service.yaml --ignore-not-found=true
+	kubectl delete -f k8s/namespace.yaml --ignore-not-found=true
+
+.PHONY: url
+url: ## Show the ingress URL
+	$(info Getting ingress URL...)
+	@kubectl get ingress -n shopcarts -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}' 2>/dev/null && echo "" || kubectl get ingress -n shopcarts -o jsonpath='{.items[0].spec.rules[0].host}' 2>/dev/null || echo "No ingress found. Run 'make deploy' first."
+
 ############################################################
 # COMMANDS FOR BUILDING THE IMAGE
 ############################################################
@@ -113,8 +129,8 @@ build:	## Build the project container image for local platform
 
 .PHONY: push
 push:	## Push the image to the container registry
-	$(info Pushing $(IMAGE) to local registry...)
-	@k3d images import $(IMAGE_NAME):$(IMAGE_TAG) -c $(CLUSTER)
+	$(info Pushing $(IMAGE) to registry...)
+	docker push $(IMAGE)
 
 .PHONY: cluster-import-image
 cluster-import-image: build ## Import the image to the K3D cluster
