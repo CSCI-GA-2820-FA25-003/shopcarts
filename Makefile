@@ -6,6 +6,9 @@ IMAGE_TAG ?= 1.0
 IMAGE ?= $(REGISTRY)/$(ORG)/$(IMAGE_NAME):$(IMAGE_TAG)
 PLATFORM ?= "linux/amd64,linux/arm64"
 CLUSTER ?= nyu-devops
+LOCAL_REGISTRY_HOST ?= registry.localhost
+LOCAL_REGISTRY_PORT ?= 5001
+LOCAL_REGISTRY ?= $(LOCAL_REGISTRY_HOST):$(LOCAL_REGISTRY_PORT)
 
 .SILENT:
 
@@ -61,7 +64,7 @@ cluster: ## Create a K3D Kubernetes cluster with load balancer and registry
 	else \
 		echo "Creating Kubernetes cluster $(CLUSTER) with registry and 2 agents..."; \
 		k3d cluster create $(CLUSTER) --servers 1 --agents 2 \
-			--registry-create registry.localhost:0.0.0.0:5001 \
+			--registry-create $(LOCAL_REGISTRY_HOST):0.0.0.0:$(LOCAL_REGISTRY_PORT) \
 			--port '8080:80@loadbalancer' \
 			--timeout 300s --no-rollback 2>&1 || true; \
 		echo "Writing kubeconfig..."; \
@@ -79,15 +82,19 @@ cluster-rm: ## Remove a K3D Kubernetes cluster
 .PHONY: deploy
 deploy: build ## Deploy the service on local Kubernetes
 	$(info Publishing image to local registry and deploying...)
-	docker tag $(IMAGE_NAME):$(IMAGE_TAG) registry.localhost:5001/$(IMAGE_NAME):$(IMAGE_TAG)
-	docker push registry.localhost:5001/$(IMAGE_NAME):$(IMAGE_TAG)
+	@if ! getent hosts $(LOCAL_REGISTRY_HOST) >/dev/null; then \
+		echo "Adding $(LOCAL_REGISTRY_HOST) to /etc/hosts so Docker can reach the local registry..."; \
+		echo "127.0.0.1 $(LOCAL_REGISTRY_HOST)" | sudo tee -a /etc/hosts >/dev/null; \
+	fi
+	docker tag $(IMAGE_NAME):$(IMAGE_TAG) $(LOCAL_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
+	docker push $(LOCAL_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
 	kubectl apply -f k8s/namespace.yaml
 	kubectl apply -f k8s/postgres/service.yaml
 	kubectl apply -f k8s/postgres/statefulset.yaml
 	kubectl apply -f k8s/shopcarts-configmap.yaml
 	kubectl apply -f k8s/shopcarts-deployment.yaml
 	kubectl -n shopcarts set image deployment/shopcarts \
-	  shopcarts=registry.localhost:5001/$(IMAGE_NAME):$(IMAGE_TAG)
+	  shopcarts=$(LOCAL_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
 	kubectl apply -f k8s/ingress.yaml
 	@echo "Waiting for workloads..."
 	@kubectl -n shopcarts rollout status statefulset/postgres --timeout=300s
@@ -124,8 +131,12 @@ build:	## Build the project container image for local platform
 .PHONY: push
 push: ## Push the image to the local registry
 	$(info Pushing $(IMAGE_NAME):$(IMAGE_TAG) to local registry...)
-	docker tag $(IMAGE_NAME):$(IMAGE_TAG) registry.localhost:5001/$(IMAGE_NAME):$(IMAGE_TAG)
-	docker push registry.localhost:5001/$(IMAGE_NAME):$(IMAGE_TAG)
+	@if ! getent hosts $(LOCAL_REGISTRY_HOST) >/dev/null; then \
+		echo "Adding $(LOCAL_REGISTRY_HOST) to /etc/hosts so Docker can reach the local registry..."; \
+		echo "127.0.0.1 $(LOCAL_REGISTRY_HOST)" | sudo tee -a /etc/hosts >/dev/null; \
+	fi
+	docker tag $(IMAGE_NAME):$(IMAGE_TAG) $(LOCAL_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
+	docker push $(LOCAL_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
 
 .PHONY: cluster-import-image
 cluster-import-image: build ## Import the image to the K3D cluster
