@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: shopcarts
-        image: cluster-registry:5001/petshop:1.0
+        image: shopcarts:1.0
         ports:
         - containerPort: 8080
         env:
@@ -31,13 +31,13 @@ spec:
               key: PORT
         readinessProbe:
           httpGet:
-            path: /
+            path: /health
             port: 8080
           initialDelaySeconds: 10
           periodSeconds: 5
         livenessProbe:
           httpGet:
-            path: /
+            path: /health
             port: 8080
           initialDelaySeconds: 30
           periodSeconds: 10

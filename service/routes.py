@@ -94,7 +94,11 @@ def _compute_cart_total(cart: Shopcart) -> Decimal:
     total = Decimal("0")
     for item in getattr(cart, "items", []):
         quantity = int(getattr(item, "quantity", 0) or 0)
-        price = item.price if isinstance(item.price, Decimal) else Decimal(str(item.price or 0))
+        price = (
+            item.price
+            if isinstance(item.price, Decimal)
+            else Decimal(str(item.price or 0))
+        )
         total += price * quantity
     return total
 
@@ -180,7 +184,9 @@ def _parse_list_filters(args) -> CartFilters:
     return filters
 
 
-def _filter_by_total_price(shopcarts, min_total: Decimal | None, max_total: Decimal | None):
+def _filter_by_total_price(
+    shopcarts, min_total: Decimal | None, max_total: Decimal | None
+):
     """Filter shopcarts in-memory according to total price bounds."""
     if min_total is None and max_total is None:
         return shopcarts
@@ -194,6 +200,15 @@ def _filter_by_total_price(shopcarts, min_total: Decimal | None, max_total: Deci
             continue
         filtered.append(cart)
     return filtered
+
+
+######################################################################
+# HEALTH CHECK ENDPOINT
+######################################################################
+@app.route("/health", methods=["GET"])
+def health_check():
+    """Health check endpoint for Kubernetes"""
+    return jsonify({"status": "OK"}), status.HTTP_200_OK
 
 
 ######################################################################
@@ -827,7 +842,9 @@ def list_items_in_shopcart(customer_id):
 @app.route("/shopcarts/<int:customer_id>/totals", methods=["GET"])
 def get_shopcart_totals(customer_id: int):
     """Return aggregated totals for a customer's shopcart."""
-    app.logger.info("Request to compute totals for shopcart of customer %s", customer_id)
+    app.logger.info(
+        "Request to compute totals for shopcart of customer %s", customer_id
+    )
 
     shopcart = Shopcart.find_by_customer_id(customer_id).first()
     if not shopcart:
@@ -840,7 +857,11 @@ def get_shopcart_totals(customer_id: int):
     subtotal = Decimal("0")
     for item in getattr(shopcart, "items", []):
         quantity = int(getattr(item, "quantity", 0) or 0)
-        price = item.price if isinstance(item.price, Decimal) else Decimal(str(item.price or 0))
+        price = (
+            item.price
+            if isinstance(item.price, Decimal)
+            else Decimal(str(item.price or 0))
+        )
         total_quantity += quantity
         subtotal += price * quantity
 

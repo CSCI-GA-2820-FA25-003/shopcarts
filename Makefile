@@ -1,6 +1,6 @@
 # These can be overidden with env vars.
 REGISTRY ?= cluster-registry:5001
-IMAGE_NAME ?= petshop
+IMAGE_NAME ?= shopcarts
 IMAGE_TAG ?= 1.0
 IMAGE ?= $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
 PLATFORM ?= "linux/amd64,linux/arm64"
@@ -78,14 +78,13 @@ cluster-rm: ## Remove a K3D Kubernetes cluster
 deploy: build push ## Deploy the service on local Kubernetes
 	$(info Deploying service locally...)
 	kubectl apply -f k8s/namespace.yaml
-	kubectl apply -f k8s/postgres-configmap.yaml
-	kubectl apply -f k8s/postgres-secret.yaml
-	kubectl apply -f k8s/postgres-deployment.yaml
+	kubectl apply -f k8s/postgres/service.yaml
+	kubectl apply -f k8s/postgres/statefulset.yaml
 	kubectl apply -f k8s/shopcarts-configmap.yaml
 	kubectl apply -f k8s/shopcarts-deployment.yaml
 	kubectl apply -f k8s/ingress.yaml
 	@echo "Waiting for deployments to be ready..."
-	@kubectl wait --for=condition=Available deployment/postgres -n shopcarts --timeout=120s
+	@kubectl wait --for=condition=Ready pods -l app=postgres -n shopcarts --timeout=120s
 	@kubectl wait --for=condition=Available deployment/shopcarts -n shopcarts --timeout=120s || echo "Shopcarts deployment may take longer as image is building..."
 
 ############################################################
