@@ -54,26 +54,21 @@ secret: ## Generate a secret hex key
 
 ##@ Kubernetes
 
-.PHONY: cluster-check
-cluster-check: ## Check if a Kubernetes cluster exists
-	@k3d cluster list | grep -q $(CLUSTER) && echo "Cluster $(CLUSTER) exists" || echo "Cluster $(CLUSTER) does not exist"
-
 .PHONY: cluster
 cluster: ## Create a K3D Kubernetes cluster with load balancer and registry
 	@if k3d cluster list | grep -q $(CLUSTER); then \
 		echo "Cluster $(CLUSTER) already exists. Use 'make cluster-rm' to remove it first."; \
 	else \
 		echo "Creating Kubernetes cluster $(CLUSTER) with registry and 2 agents..."; \
-		echo "Note: In Docker-in-Docker environments, k3d may report errors but the cluster should still work."; \
-		k3d cluster create $(CLUSTER) --servers 1 --agents 2 --registry-create cluster-registry:0.0.0.0:5001 --port '8080:80@loadbalancer' --timeout 300s --no-rollback 2>&1 || true; \
-		echo "Waiting for cluster to start..."; \
-		sleep 10; \
+		k3d cluster create $(CLUSTER) --servers 1 --agents 2 \
+			--registry-create registry.localhost:0.0.0.0:5001 \
+			--port '8080:80@loadbalancer' \
+			--timeout 300s --no-rollback 2>&1 || true; \
 		echo "Writing kubeconfig..."; \
-		k3d kubeconfig merge $(CLUSTER) --kubeconfig-switch-context 2>&1 || k3d kubeconfig write $(CLUSTER) --kubeconfig-switch-context 2>&1 || true; \
-		echo "Checking cluster status..."; \
-		sleep 3; \
-		kubectl get nodes 2>&1 || echo "Note: If nodes are not showing, the cluster may need more time. Try: kubectl get nodes"; \
-		echo "Cluster setup complete!"; \
+		k3d kubeconfig merge $(CLUSTER) --kubeconfig-switch-context 2>&1 || \
+			k3d kubeconfig write $(CLUSTER) --kubeconfig-switch-context 2>&1 || true; \
+		kubectl wait --context k3d-$(CLUSTER) node --all --for=condition=Ready --timeout=180s || exit 1; \
+		echo "Cluster ready."; \
 	fi
 
 .PHONY: cluster-rm
@@ -82,27 +77,26 @@ cluster-rm: ## Remove a K3D Kubernetes cluster
 	k3d cluster delete $(CLUSTER)
 
 .PHONY: deploy
-deploy: build cluster-import-image ## Deploy the service on local Kubernetes
-	$(info Deploying service locally...)
+deploy: build ## Deploy the service on local Kubernetes
+	$(info Publishing image to local registry and deploying...)
+	docker tag $(IMAGE_NAME):$(IMAGE_TAG) registry.localhost:5001/$(IMAGE_NAME):$(IMAGE_TAG)
+	docker push registry.localhost:5001/$(IMAGE_NAME):$(IMAGE_TAG)
 	kubectl apply -f k8s/namespace.yaml
 	kubectl apply -f k8s/postgres/service.yaml
 	kubectl apply -f k8s/postgres/statefulset.yaml
 	kubectl apply -f k8s/shopcarts-configmap.yaml
 	kubectl apply -f k8s/shopcarts-deployment.yaml
+	kubectl -n shopcarts set image deployment/shopcarts \
+	  shopcarts=registry.localhost:5001/$(IMAGE_NAME):$(IMAGE_TAG)
 	kubectl apply -f k8s/ingress.yaml
-	@echo "Waiting for deployments to be ready..."
-	@kubectl wait --for=condition=Ready pods -l app=postgres -n shopcarts --timeout=120s
-	@kubectl wait --for=condition=Available deployment/shopcarts -n shopcarts --timeout=120s
-
-.PHONY: undeploy
-undeploy: ## Remove all Kubernetes resources
-	$(info Removing Kubernetes resources...)
-	kubectl delete -f k8s/ingress.yaml --ignore-not-found=true
-	kubectl delete -f k8s/shopcarts-deployment.yaml --ignore-not-found=true
-	kubectl delete -f k8s/shopcarts-configmap.yaml --ignore-not-found=true
-	kubectl delete -f k8s/postgres/statefulset.yaml --ignore-not-found=true
-	kubectl delete -f k8s/postgres/service.yaml --ignore-not-found=true
-	kubectl delete -f k8s/namespace.yaml --ignore-not-found=true
+	@echo "Waiting for workloads..."
+	@kubectl -n shopcarts rollout status statefulset/postgres --timeout=300s
+	@kubectl -n shopcarts rollout status deployment/shopcarts --timeout=300s || { \
+	  echo "[DIAG] shopcarts not ready"; \
+	  kubectl -n shopcarts get pods,svc; \
+	  kubectl -n shopcarts describe deploy/shopcarts | sed -n '1,160p'; \
+	  exit 1; }
+	@echo "Deploy complete. Access via http://127.0.0.1:8080"
 
 .PHONY: url
 url: ## Show the ingress URL
@@ -128,9 +122,10 @@ build:	## Build the project container image for local platform
 	docker build --rm --pull --tag $(IMAGE) --tag $(IMAGE_NAME):$(IMAGE_TAG) .
 
 .PHONY: push
-push:	## Push the image to the container registry
-	$(info Pushing $(IMAGE) to registry...)
-	docker push $(IMAGE)
+push: ## Push the image to the local registry
+	$(info Pushing $(IMAGE_NAME):$(IMAGE_TAG) to local registry...)
+	docker tag $(IMAGE_NAME):$(IMAGE_TAG) registry.localhost:5001/$(IMAGE_NAME):$(IMAGE_TAG)
+	docker push registry.localhost:5001/$(IMAGE_NAME):$(IMAGE_TAG)
 
 .PHONY: cluster-import-image
 cluster-import-image: build ## Import the image to the K3D cluster
