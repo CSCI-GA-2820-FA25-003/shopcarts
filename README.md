@@ -142,4 +142,53 @@ curl -X PATCH http://127.0.0.1:5000/shopcarts/1/checkout
 - Build and run the production image: `make build` then `docker run`
 - Kubernetes helpers (`make cluster`, `make deploy`) are available for local cluster experimentation.
 
+## Docker Registry Workflow
+
+### Building and Pushing Images
+
+The Makefile supports building and pushing images to Docker registries (DockerHub, GHCR, etc.):
+
+```bash
+# Set your registry credentials (replace with your values)
+export REGISTRY=docker.io
+export ORG=your-username
+export IMAGE_NAME=shopcarts
+export IMAGE_TAG=1.0
+
+# Login to your registry
+docker login $(REGISTRY)
+
+# Build the image
+make build
+
+# Push to registry
+make push
+
+# Deploy to Kubernetes (uses local cluster)
+make deploy
+
+# Get the service URL
+make url
+
+# Clean up when done
+make undeploy
+```
+
+### Environment Variables
+
+You can override the default image configuration:
+
+- `REGISTRY`: Container registry (default: `docker.io`)
+- `ORG`: Organization/username (default: `your-username`)
+- `IMAGE_NAME`: Image name (default: `shopcarts`)
+- `IMAGE_TAG`: Image tag (default: `1.0`)
+
+Example for GitHub Container Registry:
+```bash
+export REGISTRY=ghcr.io
+export ORG=your-github-username
+make build
+make push
+```
+
 With these instructions you can install, run, exercise each API endpoint, and test the service locally.

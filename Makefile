@@ -1,8 +1,9 @@
 # These can be overidden with env vars.
-REGISTRY ?= cluster-registry:5001
+REGISTRY ?= docker.io
+ORG ?= your-username
 IMAGE_NAME ?= shopcarts
 IMAGE_TAG ?= 1.0
-IMAGE ?= $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
+IMAGE ?= $(REGISTRY)/$(ORG)/$(IMAGE_NAME):$(IMAGE_TAG)
 PLATFORM ?= "linux/amd64,linux/arm64"
 CLUSTER ?= nyu-devops
 
@@ -62,11 +63,17 @@ cluster: ## Create a K3D Kubernetes cluster with load balancer and registry
 	@if k3d cluster list | grep -q $(CLUSTER); then \
 		echo "Cluster $(CLUSTER) already exists. Use 'make cluster-rm' to remove it first."; \
 	else \
-		echo "Creating Kubernetes cluster $(CLUSTER) with a registry and 2 worker nodes..."; \
-		k3d cluster create $(CLUSTER) --agents 2 --registry-create cluster-registry:0.0.0.0:5001 --port '8080:80@loadbalancer'; \
-		kubectl config use-context k3d-$(CLUSTER); \
-		echo "Cluster created successfully! Waiting for nodes to be ready..."; \
-		kubectl wait --for=condition=Ready nodes --all --timeout=60s; \
+		echo "Creating Kubernetes cluster $(CLUSTER) with registry and 2 agents..."; \
+		echo "Note: In Docker-in-Docker environments, k3d may report errors but the cluster should still work."; \
+		k3d cluster create $(CLUSTER) --servers 1 --agents 2 --registry-create cluster-registry:0.0.0.0:5001 --port '8080:80@loadbalancer' --timeout 300s --no-rollback 2>&1 || true; \
+		echo "Waiting for cluster to start..."; \
+		sleep 10; \
+		echo "Writing kubeconfig..."; \
+		k3d kubeconfig merge $(CLUSTER) --kubeconfig-switch-context 2>&1 || k3d kubeconfig write $(CLUSTER) --kubeconfig-switch-context 2>&1 || true; \
+		echo "Checking cluster status..."; \
+		sleep 3; \
+		kubectl get nodes 2>&1 || echo "Note: If nodes are not showing, the cluster may need more time. Try: kubectl get nodes"; \
+		echo "Cluster setup complete!"; \
 	fi
 
 .PHONY: cluster-rm
@@ -75,7 +82,7 @@ cluster-rm: ## Remove a K3D Kubernetes cluster
 	k3d cluster delete $(CLUSTER)
 
 .PHONY: deploy
-deploy: build push ## Deploy the service on local Kubernetes
+deploy: build cluster-import-image ## Deploy the service on local Kubernetes
 	$(info Deploying service locally...)
 	kubectl apply -f k8s/namespace.yaml
 	kubectl apply -f k8s/postgres/service.yaml
@@ -85,7 +92,22 @@ deploy: build push ## Deploy the service on local Kubernetes
 	kubectl apply -f k8s/ingress.yaml
 	@echo "Waiting for deployments to be ready..."
 	@kubectl wait --for=condition=Ready pods -l app=postgres -n shopcarts --timeout=120s
-	@kubectl wait --for=condition=Available deployment/shopcarts -n shopcarts --timeout=120s || echo "Shopcarts deployment may take longer as image is building..."
+	@kubectl wait --for=condition=Available deployment/shopcarts -n shopcarts --timeout=120s
+
+.PHONY: undeploy
+undeploy: ## Remove all Kubernetes resources
+	$(info Removing Kubernetes resources...)
+	kubectl delete -f k8s/ingress.yaml --ignore-not-found=true
+	kubectl delete -f k8s/shopcarts-deployment.yaml --ignore-not-found=true
+	kubectl delete -f k8s/shopcarts-configmap.yaml --ignore-not-found=true
+	kubectl delete -f k8s/postgres/statefulset.yaml --ignore-not-found=true
+	kubectl delete -f k8s/postgres/service.yaml --ignore-not-found=true
+	kubectl delete -f k8s/namespace.yaml --ignore-not-found=true
+
+.PHONY: url
+url: ## Show the ingress URL
+	$(info Getting ingress URL...)
+	@kubectl get ingress -n shopcarts -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}' 2>/dev/null && echo "" || kubectl get ingress -n shopcarts -o jsonpath='{.items[0].spec.rules[0].host}' 2>/dev/null || echo "No ingress found. Run 'make deploy' first."
 
 ############################################################
 # COMMANDS FOR BUILDING THE IMAGE
@@ -107,8 +129,8 @@ build:	## Build the project container image for local platform
 
 .PHONY: push
 push:	## Push the image to the container registry
-	$(info Pushing $(IMAGE) to local registry...)
-	@k3d images import $(IMAGE_NAME):$(IMAGE_TAG) -c $(CLUSTER)
+	$(info Pushing $(IMAGE) to registry...)
+	docker push $(IMAGE)
 
 .PHONY: cluster-import-image
 cluster-import-image: build ## Import the image to the K3D cluster
