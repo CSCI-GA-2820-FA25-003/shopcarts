@@ -9,6 +9,7 @@ This project implements a Flask-based REST API for managing customer shopcarts a
 - Python 3.11
 - `pipenv` (or another preferred environment manager)
 - PostgreSQL (local or containerised) reachable by the Flask app
+- Docker (required for building or running the provided container workflows)
 
 The service automatically creates the database tables on startup.
 
@@ -56,12 +57,26 @@ tests/              - Automated test suites
    export FLASK_APP=wsgi:app
    ```
 
+## Configuration
+- `DATABASE_URI` (default: `postgresql+psycopg://postgres:postgres@localhost:5432/shopcarts`)  
+  Override to point at a different PostgreSQL instance. Use the `postgresql+psycopg` dialect so SQLAlchemy loads the correct driver.
+- `SECRET_KEY` (default: `sup3r-s3cr3t`)  
+  Flask secret used for session management.
+- `LOGGING_LEVEL` (default: `INFO`)  
+  Adjust via standard Python logging configuration if you need more verbose output.
+
+Quick local database via Docker:
+```bash
+docker run --name shopcarts-db -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=shopcarts -p 5432:5432 -d postgres:16
+```
+
 ## Running the Service
 Choose one of the following:
 - `pipenv run flask run` (default Flask dev server on `http://127.0.0.1:5000`)
 - `make run` (uses Honcho to launch Gunicorn via the `Procfile`)
 
-When the service starts you should see log output confirming the database tables were created and the server is accepting requests.
+When the service starts you should see log output confirming the database tables were created and the server is accepting requests. A lightweight health probe is available at `GET /health`.
 
 ## Running Tests and Quality Checks
 - Unit tests with coverage: `make test` (or `pytest --pspec --cov=service --disable-warnings`)
@@ -72,44 +87,58 @@ All tests require the service dependencies to be installed and a database connec
 ## API Overview
 All request and response bodies are JSON. Unless otherwise noted, endpoints that accept a body require the header `Content-Type: application/json`. Numeric identifiers (`customer_id`, `product_id`, `item_id`, etc.) must be sent as integers.
 
+### Shopcart Statuses
+Valid values are `active`, `abandoned`, `locked`, and `expired`. The helper endpoints listed below transition carts between these states.
+
 ### Service Metadata
 | Method | Path | Description | Notes |
 | ------ | ---- | ----------- | ----- |
 | GET | `/` | Returns service name, version, description, and available paths | No authentication required |
+| GET | `/health` | Lightweight health probe | Useful for container orchestrators |
 
 ### Shopcart Collection
 | Method | Path | Description | Required Input |
 | ------ | ---- | ----------- | -------------- |
-| POST | `/shopcarts` | Create a new shopcart | Body: `{ "customer_id": 1, "status": "active", "total_items": 0, "items": [] }`<br>`customer_id` (int) is required and must be unique. Optional fields: `status` (default `active`), `total_items`, `items` (see item schema below). |
-| GET | `/shopcarts` | List all shopcarts | No body. Optional query params: `status` (`active`, `abandoned`), `customer_id` (integer), `created_after`, `created_before` (ISO8601 timestamps), `total_price_gt`, and `total_price_lt` (decimal). |
+| POST | `/shopcarts` | Create a new shopcart | Body: `{ "customer_id": 1, "status": "active", "items": [] }`<br>`customer_id` (int) is required and must be unique. Optional fields: `status` (from the valid status list), `total_items`, `items` (see schema below). |
+| GET | `/shopcarts` | List shopcarts with optional filters | Query parameters listed below. |
+
+Supported query parameters:
+- `status`: must be one of the valid status values (case-insensitive).
+- `customer_id`: integer equality match.
+- `created_after` / `created_before`: ISO8601 timestamps (e.g. `2024-01-02T00:00:00+00:00`). Missing timezones default to UTC.
+- `total_price_gt` / `total_price_lt`: decimal totals computed as `sum(quantity * price)`. Provide both to filter within a range; the upper bound must be ≥ the lower bound.
 
 Filtering rules:
-- Filters can be combined; only carts matching every provided parameter are returned.
-- `created_after` / `created_before` accept ISO8601 timestamps (e.g. `2024-01-02T00:00:00+00:00`); omit the timezone to assume UTC.
-- `total_price_gt` / `total_price_lt` accept decimal values and filter on the computed cart total (sum of `price * quantity` for each item). Provide both to search within a range.
-- Omitting a filter leaves that dimension unrestricted.
-- Supplying a status other than `active` or `abandoned`, or a non-integer `customer_id`, produces a `400 Bad Request`.
-- Non-ISO8601 timestamps for `created_after` / `created_before`, invalid decimal totals, or contradictory ranges produce a `400 Bad Request`.
+- Filters can be combined; all constraints must match for a cart to be returned.
+- Invalid values (bad timestamps, non-integer IDs, empty totals, contradictory ranges) produce `400 Bad Request`.
 
 ### Shopcart Detail
-| Method | Path | Description | Required Input |
-| ------ | ---- | ----------- | -------------- |
-| GET | `/shopcarts/<customer_id>` | Retrieve the shopcart belonging to a specific customer | Header: `X-Customer-ID` with the same integer value as the path parameter. |
-| GET | `/admin/shopcarts/<customer_id>` | Admin view of any customer shopcart | Header: `X-Role: admin`. |
-| DELETE | `/shopcarts/<customer_id>` | Delete a shopcart by its customer id | No body |
-| PUT / PATCH | `/shopcarts/<customer_id>` | Update shopcart status and optionally replace items | Body supports any of:<br>`status` (string),<br>`items` (array of Shopcart Items defined below). If `items` is provided it overwrites the existing collection. |
-| PUT / PATCH | `/shopcarts/<customer_id>/checkout` | Close the cart by marking it `abandoned` and refresh `last_modified` | No body |
-| PATCH | `/shopcarts/<customer_id>/cancel` | Cancel the cart (sets status to `abandoned`) | No body |
-| PATCH | `/shopcarts/<customer_id>/reactivate` | Reactivate a previously abandoned cart (sets status to `active`) | No body |
+| Method | Path | Description | Notes |
+| ------ | ---- | ----------- | ----- |
+| GET | `/shopcarts/<customer_id>` | Retrieve a customer-facing view with computed totals | Returns camelCase keys, totals, and item list. |
+| DELETE | `/shopcarts/<customer_id>` | Delete a shopcart by customer id | No body. |
+| PUT / PATCH | `/shopcarts/<customer_id>` | Update cart status and optionally replace items | Body supports `status` and/or `items`; supplying `items` overwrites the collection. |
+| PUT / PATCH | `/shopcarts/<customer_id>/checkout` | Mark the cart `abandoned` and refresh `last_modified` | No body. |
+| PATCH | `/shopcarts/<customer_id>/cancel` | Ensure the cart is in the `abandoned` state | No body. |
+| PATCH | `/shopcarts/<customer_id>/lock` | Transition the cart to `locked` | No body. |
+| PATCH | `/shopcarts/<customer_id>/expire` | Transition the cart to `expired` | No body. |
+| PATCH | `/shopcarts/<customer_id>/reactivate` | Transition the cart back to `active` | No body. |
+| GET | `/shopcarts/<customer_id>/totals` | Return aggregated counts and monetary totals | Always recomputes totals server-side. |
 
 ### Shopcart Items
-| Method | Path | Description | Required Input |
-| ------ | ---- | ----------- | -------------- |
-| POST | `/shopcarts/<customer_id>/items` | Add a new item to the customer's active shopcart | Body: `{ "product_id": 10, "quantity": 2, "price": 19.99, "description": "T-shirt" }`.<br>`quantity` must be a positive integer and `price` is coerced to Decimal with 2 places. |
-| GET | `/shopcarts/<customer_id>/items` | List all items in the customer's shopcart | No body |
-| GET | `/shopcarts/<customer_id>/items/<item_id>` | Retrieve a single item by id | No additional headers |
-| DELETE | `/shopcarts/<customer_id>/items/<item_id>` | Remove an item from the shopcart | No body |
-| PUT / PATCH | `/shopcarts/<customer_id>/items/<product_id>` | Update or remove (when quantity is 0) an item by `product_id` | Headers: `X-Customer-ID` must match the owning customer.<br>Body supports `quantity`, `price`, and `description`. Quantity is clamped to 0–99. Setting `quantity` to 0 deletes the item. |
+| Method | Path | Description | Notes |
+| ------ | ---- | ----------- | ----- |
+| POST | `/shopcarts/<customer_id>/items` | Add a new item or increment an existing product | `product_id`, `quantity` (>0), and `price` required. Existing quantities are incremented. |
+| GET | `/shopcarts/<customer_id>/items` | List items in the cart with optional filters | See filter list below. |
+| GET | `/shopcarts/<customer_id>/items/<product_id>` | Retrieve a single item by product id | Returns the raw item serialization. |
+| DELETE | `/shopcarts/<customer_id>/items/<product_id>` | Remove an item from the cart | No body. |
+| PUT / PATCH | `/shopcarts/<customer_id>/items/<product_id>` | Update an item by `product_id` | Supports `quantity` (0–99), `price`, `description`. Setting `quantity` to 0 deletes the item. Abandoned carts reject updates with `409 Conflict`. |
+
+Item list filters (`GET /shopcarts/<customer_id>/items`):
+- `description`: case-insensitive substring match.
+- `product_id`: integer equality.
+- `quantity`: integer equality.
+- `min_price` / `max_price`: decimal range filters (`min_price` ≤ `max_price`).
 
 ### Item Schema
 The item objects appearing in `POST /shopcarts`, `PUT/PATCH /shopcarts/<customer_id>`, and the item-specific endpoints use the following fields:
@@ -131,10 +160,13 @@ curl -X POST http://127.0.0.1:5000/shopcarts/1/items \
   -d '{"product_id": 1001, "quantity": 2, "price": 19.99, "description": "T-shirt"}'
 
 # View the cart as the customer
-curl http://127.0.0.1:5000/shopcarts/1 -H "X-Customer-ID: 1"
+curl http://127.0.0.1:5000/shopcarts/1
 
 # Checkout
 curl -X PATCH http://127.0.0.1:5000/shopcarts/1/checkout
+
+# Lock the cart for downstream processing
+curl -X PATCH http://127.0.0.1:5000/shopcarts/1/lock
 ```
 
 ## Additional Commands
