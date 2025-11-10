@@ -41,6 +41,7 @@ class Shopcart(CRUDMixin, db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     customer_id = db.Column(db.Integer, nullable=False, unique=True)
+    name = db.Column(db.String(120))
     created_date = db.Column(db.DateTime(), nullable=False, default=datetime.utcnow)
     last_modified = db.Column(
         db.DateTime(), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
@@ -61,6 +62,7 @@ class Shopcart(CRUDMixin, db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     customer_id = db.Column(db.Integer, nullable=False, unique=True)
+    name = db.Column(db.String(120))
     created_date = db.Column(db.DateTime(), nullable=False, default=datetime.utcnow)
     last_modified = db.Column(
         db.DateTime(), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
@@ -102,6 +104,7 @@ class Shopcart(CRUDMixin, db.Model):
         return {
             "id": self.id,
             "customer_id": self.customer_id,
+            "name": self.name,
             "created_date": self._to_eastern_iso(self.created_date),
             "last_modified": self._to_eastern_iso(self.last_modified),
             "status": self.status,
@@ -132,6 +135,7 @@ class Shopcart(CRUDMixin, db.Model):
 
         return {
             "customerId": self.customer_id,
+            "name": self.name,
             "createdDate": self._to_eastern_iso(self.created_date),
             "lastModified": self._to_eastern_iso(self.last_modified),
             "status": self.status,
@@ -151,6 +155,7 @@ class Shopcart(CRUDMixin, db.Model):
             self.customer_id = data["customer_id"]
             self.status = data.get("status", "active")
             self.total_items = data.get("total_items", 0)
+            self.name = data.get("name")
 
             if "created_date" in data:
                 self.created_date = datetime.fromisoformat(data["created_date"])

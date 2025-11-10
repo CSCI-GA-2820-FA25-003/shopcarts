@@ -21,6 +21,7 @@ class ShopcartFactory(factory.Factory):
     last_modified = factory.Faker("date_time")
     status = FuzzyChoice(choices=["active", "abandoned"])
     total_items = FuzzyInteger(0, 10)
+    name = factory.Faker("sentence", nb_words=3)
 
 
 class ShopcartItemFactory(factory.Factory):

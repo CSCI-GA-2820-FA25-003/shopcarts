@@ -9,6 +9,7 @@ CLUSTER ?= nyu-devops
 LOCAL_REGISTRY_HOST ?= registry.localhost
 LOCAL_REGISTRY_PORT ?= 5001
 LOCAL_REGISTRY ?= $(LOCAL_REGISTRY_HOST):$(LOCAL_REGISTRY_PORT)
+BASE_URL ?= http://127.0.0.1:5000
 
 .SILENT:
 
@@ -44,6 +45,11 @@ lint: ## Run the linter
 test: ## Run the unit tests
 	$(info Running tests...)
 	export RETRY_COUNT=1; pytest --pspec --cov=service --cov-fail-under=95 --disable-warnings
+
+.PHONY: bdd
+bdd: ## Run the Behave Selenium UI scenarios (service must be running)
+	$(info Running BDD UI tests against $(BASE_URL)...)
+	BASE_URL=$(BASE_URL) pipenv run behave
 
 .PHONY: run
 run: ## Run the service

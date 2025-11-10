@@ -170,6 +170,8 @@ class TestShopcartModel(TestCase):
         self.assertEqual(data["id"], shopcart.id)
         self.assertIn("customer_id", data)
         self.assertEqual(data["customer_id"], shopcart.customer_id)
+        self.assertIn("name", data)
+        self.assertEqual(data["name"], shopcart.name)
         self.assertIn("status", data)
         self.assertEqual(data["status"], shopcart.status)
         self.assertIn("total_items", data)
@@ -191,6 +193,7 @@ class TestShopcartModel(TestCase):
             "customer_id": 123,
             "status": "active",
             "total_items": 0,
+            "name": "Sample cart",
         }
         shopcart = Shopcart()
         shopcart.deserialize(data)
@@ -198,6 +201,7 @@ class TestShopcartModel(TestCase):
         self.assertEqual(shopcart.customer_id, 123)
         self.assertEqual(shopcart.status, "active")
         self.assertEqual(shopcart.total_items, 0)
+        self.assertEqual(shopcart.name, "Sample cart")
 
     def test_deserialize_missing_data(self):
         """It should not deserialize a Shopcart with missing data"""

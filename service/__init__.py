@@ -19,7 +19,10 @@ This module creates and configures the Flask app and sets up the logging
 and SQL database
 """
 import sys
-from flask import Flask
+
+from flask import Flask, current_app
+from sqlalchemy import inspect, text
+
 from service import config
 from service.common import log_handlers
 
@@ -46,6 +49,7 @@ def create_app():
 
         try:
             db.create_all()
+            _ensure_optional_columns(db)
         except Exception as error:  # pylint: disable=broad-except
             app.logger.critical("%s: Cannot continue", error)
             # gunicorn requires exit code 4 to stop spawning workers when they die
@@ -61,3 +65,22 @@ def create_app():
         app.logger.info("Service initialized!")
 
         return app
+
+
+def _ensure_optional_columns(db):
+    """Backfill optional columns (e.g., shopcart.name) when missing."""
+    logger = current_app.logger if current_app else None
+    inspector = inspect(db.engine)
+    try:
+        columns = {col["name"] for col in inspector.get_columns("shopcarts")}
+    except Exception:  # pragma: no cover
+        return
+    if "name" not in columns:
+        try:
+            with db.engine.begin() as connection:
+                connection.execute(text("ALTER TABLE shopcarts ADD COLUMN name VARCHAR(120)"))
+        except Exception as exc:  # pragma: no cover
+            # If the column already exists or ALTER fails, log and continue.
+            db.session.rollback()
+            if logger:
+                logger.warning("Skipping shopcart.name column backfill: %s", exc, exc_info=True)

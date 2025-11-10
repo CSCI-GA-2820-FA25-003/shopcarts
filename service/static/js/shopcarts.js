@@ -43,6 +43,17 @@ const clearAlert = () => {
   alertsRegion.innerHTML = "";
 };
 
+const normalizeStatus = (value) =>
+  (value ?? "active").toString().trim().toLowerCase() || "active";
+
+const formatStatusLabel = (value) => {
+  const normalized = normalizeStatus(value);
+  if (normalized === "active") {
+    return "OPEN";
+  }
+  return normalized.toUpperCase();
+};
+
 const normalizeCart = (raw = {}) => {
   if (!raw || typeof raw !== "object") return null;
   const snake = "customer_id" in raw || "total_items" in raw;
@@ -55,7 +66,9 @@ const normalizeCart = (raw = {}) => {
     );
   return {
     customerId: snake ? raw.customer_id : raw.customerId ?? raw.id,
-    status: raw.status ?? "active",
+    name: raw.name ?? raw.cartName ?? "",
+    status: normalizeStatus(raw.status),
+    statusDisplay: formatStatusLabel(raw.status),
     totalItems: snake ? raw.total_items ?? items.length : raw.totalItems ?? 0,
     totalPrice: raw.total_price ?? raw.totalPrice ?? computeTotals(),
     createdDate: snake ? raw.created_date : raw.createdDate,
@@ -99,8 +112,9 @@ const renderShopcartCard = (cart) => {
   resultCard.hidden = false;
   resultCard.innerHTML = `
     <h3>Customer ${cart.customerId}</h3>
-    <p><span class="${badgeClass}">${cart.status}</span></p>
+    <p><span class="${badgeClass}">${cart.statusDisplay}</span></p>
     <div class="metadata">
+      <div><span>Name</span>${cart.name || "—"}</div>
       <div><span>Total Items</span>${cart.totalItems}</div>
       <div><span>Total Price</span>${formatCurrency(cart.totalPrice)}</div>
       <div><span>Created</span>${formatDate(cart.createdDate)}</div>
@@ -113,7 +127,7 @@ const renderShopcartCard = (cart) => {
 const renderTable = (carts) => {
   if (!Array.isArray(carts) || carts.length === 0) {
     tableBody.innerHTML =
-      '<tr><td colspan="5" class="empty">No results match your filters.</td></tr>';
+      '<tr><td colspan="6" class="empty">No results match your filters.</td></tr>';
     return;
   }
 
@@ -123,7 +137,8 @@ const renderTable = (carts) => {
       return `
         <tr>
           <td>${cart.customerId}</td>
-          <td><span class="${badgeClass}">${cart.status}</span></td>
+          <td>${cart.name || "—"}</td>
+          <td><span class="${badgeClass}">${cart.statusDisplay}</span></td>
           <td>${cart.totalItems}</td>
           <td>${formatCurrency(cart.totalPrice)}</td>
           <td>${formatDate(cart.lastModified)}</td>
@@ -190,14 +205,16 @@ const handleCreate = async (event) => {
     showAlert("Customer ID is required", "error");
     return;
   }
+  const cartName = getFieldValue(form, "cartName");
   const statusValue = getFieldValue(form, "status");
   const payload = { customer_id: customerId };
   if (statusValue) payload.status = statusValue;
+  if (cartName) payload.name = cartName;
   try {
     const response = await apiRequest("", { method: "POST", body: payload });
     const cart = normalizeCart(response);
     renderShopcartCard(cart);
-    showAlert(`Shopcart ${customerId} created successfully`, "success");
+    showAlert("Shopcart created successfully", "success");
     form.reset();
     await refreshList();
   } catch (error) {
@@ -220,7 +237,8 @@ const handleUpdate = async (event) => {
       body: { status: statusValue },
     });
     renderShopcartCard(normalizeCart(response));
-    showAlert(`Shopcart ${customerId} updated to ${statusValue}`, "success");
+    const statusLabel = formatStatusLabel(statusValue);
+    showAlert(`Shopcart ${customerId} updated to ${statusLabel}`, "success");
     await refreshList();
   } catch (error) {
     showAlert(error.message, "error");
