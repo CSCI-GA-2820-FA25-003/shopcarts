@@ -22,6 +22,7 @@ import sys
 
 from flask import Flask, current_app
 from sqlalchemy import inspect, text
+from sqlalchemy.exc import SQLAlchemyError
 
 from service import config
 from service.common import log_handlers
@@ -73,13 +74,13 @@ def _ensure_optional_columns(db):
     inspector = inspect(db.engine)
     try:
         columns = {col["name"] for col in inspector.get_columns("shopcarts")}
-    except Exception:  # pragma: no cover
+    except SQLAlchemyError:  # pragma: no cover
         return
     if "name" not in columns:
         try:
             with db.engine.begin() as connection:
                 connection.execute(text("ALTER TABLE shopcarts ADD COLUMN name VARCHAR(120)"))
-        except Exception as exc:  # pragma: no cover
+        except SQLAlchemyError as exc:  # pragma: no cover
             # If the column already exists or ALTER fails, log and continue.
             db.session.rollback()
             if logger:
