@@ -223,9 +223,20 @@ def index():
         "version": "1.0.0",
         "paths": {
             "shopcarts": "/shopcarts",
+            "ui": "/ui",
         },
     }
     return jsonify(response), 200
+
+
+######################################################################
+# ADMIN UI
+######################################################################
+@app.route("/ui", methods=["GET"])
+@app.route("/admin", methods=["GET"])
+def admin_ui():
+    """Serve the single-page admin console."""
+    return app.send_static_file("index.html")
 
 
 ######################################################################

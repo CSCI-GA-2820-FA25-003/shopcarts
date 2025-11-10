@@ -187,6 +187,19 @@ class TestYourResourceService(TestCase):
         self.assertEqual(new_shopcart["totalPrice"], 0.0)
         self.assertIsInstance(new_shopcart["items"], list)
 
+    # ----------------------------------------------------------
+    # TEST ADMIN UI
+    # ----------------------------------------------------------
+    def test_admin_ui_served(self):
+        """It should serve the admin single-page UI"""
+        resp = self.client.get("/ui")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        content_type = resp.headers.get("Content-Type", "")
+        self.assertIn("text/html", content_type)
+        body = resp.get_data(as_text=True)
+        self.assertIn("Admin Console", body)
+        self.assertIn("Workflow shortcuts", body)
+
     def test_create_shopcart_conflict(self):
         """It should return 409 when creating a cart for the same customer twice"""
         payload = {"customer_id": 9999, "status": "active"}

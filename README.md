@@ -80,6 +80,19 @@ Choose one of the following:
 
 When the service starts you should see log output confirming the database tables were created and the server is accepting requests. A lightweight health probe is available at `GET /health`.
 
+## Admin UI
+Requirement #80 adds a lightweight administrator console backed by the same REST API. Once the Flask app is running, open [`http://localhost:5000/ui`](http://localhost:5000/ui) (alias `/admin`) to load the single-page interface. All buttons submit requests to the live endpoints, so you can drive the service exactly the way Selenium/Behave tests will.
+
+The UI currently supports:
+- **Create**: enter a `customer_id` (and optional status) to POST `/shopcarts`.
+- **Read**: fetch a single cart by customer id and inspect its metadata/items.
+- **Update**: change the cart status with PUT `/shopcarts/<customer_id>`.
+- **Delete**: remove a cart in one click.
+- **List/Query**: filter `/shopcarts` by status, customer, or total price bounds, or list everything.
+- **Action**: run helper endpoints (`checkout`, `cancel`, `lock`, `expire`, `reactivate`) to demonstrate the extra workflow action.
+
+The results section shows both the focused cart (for scenario-by-scenario verification) and a live table of all carts returned by the latest query so that CRUD workflows remain visible while you test.
+
 ## Running Tests and Quality Checks
 - Unit tests with coverage: `make test` (or `pytest --pspec --cov=service --disable-warnings`)
 - Linting: `make lint`

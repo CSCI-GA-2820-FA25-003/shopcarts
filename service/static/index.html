@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Shopcart Admin Console</title>
+    <link rel="stylesheet" href="/static/css/shopcarts.css" />
+  </head>
+  <body>
+    <nav class="top-nav" aria-label="Primary navigation">
+      <div class="brand">
+        <span class="dot" aria-hidden="true"></span>
+        Shopcart Admin
+      </div>
+      <div class="nav-links">
+        <a href="#panel-create">Create</a>
+        <a href="#panel-query">Query</a>
+        <a href="#panel-actions">Action</a>
+        <a href="#panel-results">Results</a>
+        <a href="/shopcarts" target="_blank" rel="noreferrer">API JSON ↗</a>
+      </div>
+    </nav>
+
+    <header class="page-header">
+      <div class="hero-copy">
+        <p class="eyebrow">Shopcart Service</p>
+        <h1>Admin Console</h1>
+        <p class="lead">
+          Administrators can create, read, update, delete, and query shopcarts
+          without touching raw APIs. Every action talks to the REST service in
+          real time, making it perfect for automation and BDD demos.
+        </p>
+        <div class="hero-pills">
+          <span class="pill">Flask</span>
+          <span class="pill">REST</span>
+          <span class="pill">Selenium-ready</span>
+        </div>
+      </div>
+      <div class="hero-stats">
+        <article class="meta-card">
+          <p class="label">API Root</p>
+          <p class="value"><code>/shopcarts</code></p>
+        </article>
+        <article class="meta-card">
+          <p class="label">Supported Actions</p>
+          <p class="value">
+            Create · Read · Update · Delete · List · Query · Action
+          </p>
+        </article>
+      </div>
+    </header>
+
+    <main>
+      <section id="alerts" class="alerts" aria-live="polite"></section>
+
+      <section class="panel panel--neutral quick-links" data-label="Shortcuts">
+        <div>
+          <h2>Workflow shortcuts</h2>
+          <p>Use these chips to jump to each section instantly.</p>
+        </div>
+        <div class="chip-row">
+          <a class="chip" href="#create-form">Create</a>
+          <a class="chip" href="#update-form">Update</a>
+          <a class="chip" href="#read-form">Read</a>
+          <a class="chip" href="#query-form">Query/List</a>
+          <a class="chip" href="#delete-form">Delete</a>
+          <a class="chip" href="#action-form">Action</a>
+          <a class="chip" href="#panel-results">Results</a>
+        </div>
+      </section>
+
+      <section id="panel-create" class="panel panel--create" data-label="Create & Update">
+        <div class="panel-heading">
+          <div>
+            <h2>Create &amp; update</h2>
+            <p>Add new shopcarts or tweak their status in seconds.</p>
+          </div>
+        </div>
+        <div class="form-grid two-column">
+          <form id="create-form" class="form-card">
+            <header>
+              <h3>Create shopcart</h3>
+              <p>POST /shopcarts</p>
+            </header>
+            <label>
+              Customer ID
+              <input
+                type="number"
+                name="customerId"
+                min="1"
+                required
+                placeholder="e.g. 101"
+              />
+            </label>
+            <label>
+              Status
+              <select name="status">
+                <option value="">active (default)</option>
+                <option value="active">active</option>
+                <option value="locked">locked</option>
+                <option value="abandoned">abandoned</option>
+                <option value="expired">expired</option>
+              </select>
+            </label>
+            <button type="submit">Create Shopcart</button>
+          </form>
+
+          <form id="update-form" class="form-card">
+            <header>
+              <h3>Update shopcart</h3>
+              <p>PUT /shopcarts/&lt;customer_id&gt;</p>
+            </header>
+            <label>
+              Customer ID
+              <input
+                type="number"
+                name="customerId"
+                min="1"
+                required
+                placeholder="e.g. 101"
+              />
+            </label>
+            <label>
+              New Status
+              <select name="status" required>
+                <option value="">Select status…</option>
+                <option value="active">active</option>
+                <option value="locked">locked</option>
+                <option value="abandoned">abandoned</option>
+                <option value="expired">expired</option>
+              </select>
+            </label>
+            <button type="submit">Save Changes</button>
+          </form>
+        </div>
+      </section>
+
+      <section id="panel-query" class="panel panel--query" data-label="Query">
+        <div class="panel-heading">
+          <div>
+            <h2>Read &amp; filter</h2>
+            <p>Inspect a single cart or filter the entire collection.</p>
+          </div>
+        </div>
+        <div class="form-grid two-column">
+          <form id="read-form" class="form-card">
+            <header>
+              <h3>Fetch one shopcart</h3>
+              <p>GET /shopcarts/&lt;customer_id&gt;</p>
+            </header>
+            <label>
+              Customer ID
+              <input
+                type="number"
+                name="customerId"
+                min="1"
+                required
+                placeholder="Customer number"
+              />
+            </label>
+            <button type="submit">Fetch</button>
+          </form>
+
+          <form id="query-form" class="form-card">
+            <header>
+              <h3>Filter shopcarts</h3>
+              <p>GET /shopcarts?...</p>
+            </header>
+            <label>
+              Customer ID (optional)
+              <input type="number" name="customerId" min="1" />
+            </label>
+            <label>
+              Status
+              <select name="status">
+                <option value="">Any</option>
+                <option value="active">active</option>
+                <option value="locked">locked</option>
+                <option value="abandoned">abandoned</option>
+                <option value="expired">expired</option>
+              </select>
+            </label>
+            <label>
+              Total Price ≥
+              <input type="number" step="0.01" min="0" name="totalPriceGt" />
+            </label>
+            <label>
+              Total Price ≤
+              <input type="number" step="0.01" min="0" name="totalPriceLt" />
+            </label>
+            <div class="button-row">
+              <button type="submit">Filter</button>
+              <button type="button" class="secondary" id="list-all">
+                List All
+              </button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <section id="panel-actions" class="panel panel--danger" data-label="Delete & Action">
+        <div class="panel-heading">
+          <div>
+            <h2>Delete &amp; actions</h2>
+            <p>All destructive or workflow actions live in one place.</p>
+          </div>
+        </div>
+        <div class="form-grid two-column">
+          <form id="delete-form" class="form-card">
+            <header>
+              <h3>Delete shopcart</h3>
+              <p>DELETE /shopcarts/&lt;customer_id&gt;</p>
+            </header>
+            <label>
+              Customer ID
+              <input
+                type="number"
+                name="customerId"
+                min="1"
+                required
+                placeholder="e.g. 101"
+              />
+            </label>
+            <button type="submit">Delete</button>
+          </form>
+
+          <form id="action-form" class="form-card">
+            <header>
+              <h3>Workflow action</h3>
+              <p>PATCH /shopcarts/&lt;customer_id&gt;/&lt;action&gt;</p>
+            </header>
+            <label>
+              Customer ID
+              <input type="number" name="customerId" min="1" required />
+            </label>
+            <label>
+              Action
+              <select name="action" required>
+                <option value="">Choose…</option>
+                <option value="checkout">Checkout</option>
+                <option value="cancel">Cancel</option>
+                <option value="lock">Lock</option>
+                <option value="expire">Expire</option>
+                <option value="reactivate">Reactivate</option>
+              </select>
+            </label>
+            <button type="submit">Run Action</button>
+          </form>
+        </div>
+      </section>
+
+      <section id="panel-results" class="panel panel--results" data-label="Results">
+        <div class="panel-heading">
+          <div>
+            <h2>Latest results</h2>
+            <p>Shows the most recent cart plus the current table view.</p>
+          </div>
+        </div>
+        <div id="result-card" class="result-card" hidden></div>
+        <div class="table-wrapper">
+          <table id="shopcart-table">
+            <thead>
+              <tr>
+                <th>Customer</th>
+                <th>Status</th>
+                <th>Total Items</th>
+                <th>Total Price</th>
+                <th>Updated</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td colspan="5" class="empty">No data yet. Run a query.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>
+        Powered by the Shopcart REST API ·
+        <a href="https://github.com/CSCI-GA-2820-FA25-003/shopcarts" target="_blank" rel="noreferrer"
+          >Project repo</a
+        >
+      </p>
+      <p>This UI is purpose-built for Selenium/Behave BDD scenarios.</p>
+    </footer>
+
+    <script src="/static/js/shopcarts.js" type="module"></script>
+  </body>
+</html>
