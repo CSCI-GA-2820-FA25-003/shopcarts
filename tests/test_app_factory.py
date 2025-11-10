@@ -17,10 +17,15 @@
 """Tests for application factory and logging utilities."""
 
 import logging
+from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
+
 from flask import Flask
+from sqlalchemy.exc import SQLAlchemyError
+
 from service import create_app
+from service.__init__ import _ensure_optional_columns
 from service.common import log_handlers
 
 
@@ -60,3 +65,75 @@ class TestAppFactory(TestCase):
             create_app()
 
         self.assertEqual(raised.exception.code, 4)
+
+
+class TestOptionalColumnBackfill(TestCase):
+    """Unit tests for the optional column backfill helper."""
+
+    def _make_fake_db(self, connection, rollback_flag):
+        return SimpleNamespace(
+            engine=SimpleNamespace(
+                begin=lambda: _BeginContext(connection),
+            ),
+            session=SimpleNamespace(rollback=lambda: rollback_flag.__setitem__("called", True)),
+        )
+
+    def test_adds_missing_name_column(self):
+        """It should issue the ALTER TABLE when the name column is missing."""
+        captures = {"sql": None, "called": False}
+
+        class _Connection:
+            def execute(self, statement):
+                captures["sql"] = str(statement)
+
+        fake_db = self._make_fake_db(_Connection(), captures)
+
+        class _Inspector:
+            def get_columns(self, _):
+                return [{"name": "customer_id"}]
+
+        app = Flask(__name__)
+        with app.app_context(), patch(
+            "service.__init__.inspect", return_value=_Inspector()
+        ):
+            _ensure_optional_columns(fake_db)
+
+        self.assertIsNotNone(captures["sql"])
+        self.assertIn("alter table shopcarts add column name", captures["sql"].lower())
+        self.assertFalse(captures["called"])
+
+    def test_handles_sqlalchemy_errors(self):
+        """It should roll back when ALTER TABLE fails."""
+        captures = {"called": False}
+
+        class _Connection:
+            def execute(self, statement):
+                raise SQLAlchemyError(f"cannot run {statement}")
+
+        fake_db = self._make_fake_db(_Connection(), captures)
+
+        class _Inspector:
+            def get_columns(self, _):
+                return [{"name": "customer_id"}]
+
+        app = Flask(__name__)
+        with app.app_context(), patch(
+            "service.__init__.inspect", return_value=_Inspector()
+        ):
+            # Should not raise even though the execution fails
+            _ensure_optional_columns(fake_db)
+
+        self.assertTrue(captures["called"])
+
+
+class _BeginContext:
+    """Simple context manager for fake database connections."""
+
+    def __init__(self, connection):
+        self.connection = connection
+
+    def __enter__(self):
+        return self.connection
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
