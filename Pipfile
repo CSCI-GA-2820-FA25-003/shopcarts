@@ -25,6 +25,7 @@ httpie = "~=3.2.4"
 behave = "*"
 selenium = "*"
 webdriver-manager = "*"
+python-dateutil = "*"
 
 [requires]
 python_version = "3.11"
