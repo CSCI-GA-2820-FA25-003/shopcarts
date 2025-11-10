@@ -15,6 +15,7 @@
 ######################################################################
 
 """Tests for application factory and logging utilities."""
+# pylint: disable=missing-function-docstring, too-few-public-methods
 
 import logging
 from types import SimpleNamespace
@@ -71,30 +72,26 @@ class TestOptionalColumnBackfill(TestCase):
     """Unit tests for the optional column backfill helper."""
 
     def _make_fake_db(self, connection, rollback_flag):
+        """Build a minimal fake db object for backfill testing."""
+        def _fake_begin():
+            return _BeginContext(connection)
+
+        def _fake_rollback():
+            rollback_flag["called"] = True
+
         return SimpleNamespace(
-            engine=SimpleNamespace(
-                begin=lambda: _BeginContext(connection),
-            ),
-            session=SimpleNamespace(rollback=lambda: rollback_flag.__setitem__("called", True)),
+            engine=SimpleNamespace(begin=_fake_begin),
+            session=SimpleNamespace(rollback=_fake_rollback),
         )
 
     def test_adds_missing_name_column(self):
         """It should issue the ALTER TABLE when the name column is missing."""
         captures = {"sql": None, "called": False}
 
-        class _Connection:
-            def execute(self, statement):
-                captures["sql"] = str(statement)
-
-        fake_db = self._make_fake_db(_Connection(), captures)
-
-        class _Inspector:
-            def get_columns(self, _):
-                return [{"name": "customer_id"}]
-
+        fake_db = self._make_fake_db(_RecordingConnection(captures), captures)
         app = Flask(__name__)
         with app.app_context(), patch(
-            "service.__init__.inspect", return_value=_Inspector()
+            "service.__init__.inspect", return_value=_MissingNameInspector()
         ):
             _ensure_optional_columns(fake_db)
 
@@ -106,21 +103,11 @@ class TestOptionalColumnBackfill(TestCase):
         """It should roll back when ALTER TABLE fails."""
         captures = {"called": False}
 
-        class _Connection:
-            def execute(self, statement):
-                raise SQLAlchemyError(f"cannot run {statement}")
-
-        fake_db = self._make_fake_db(_Connection(), captures)
-
-        class _Inspector:
-            def get_columns(self, _):
-                return [{"name": "customer_id"}]
-
+        fake_db = self._make_fake_db(_FailingConnection(), captures)
         app = Flask(__name__)
         with app.app_context(), patch(
-            "service.__init__.inspect", return_value=_Inspector()
+            "service.__init__.inspect", return_value=_MissingNameInspector()
         ):
-            # Should not raise even though the execution fails
             _ensure_optional_columns(fake_db)
 
         self.assertTrue(captures["called"])
@@ -137,3 +124,27 @@ class _BeginContext:
 
     def __exit__(self, exc_type, exc, tb):
         return False
+
+
+class _RecordingConnection:
+    """Fake connection that records executed SQL."""
+
+    def __init__(self, captures):
+        self.captures = captures
+
+    def execute(self, statement):
+        self.captures["sql"] = str(statement)
+
+
+class _MissingNameInspector:
+    """Inspector whose table misses the name column."""
+
+    def get_columns(self, _):
+        return [{"name": "customer_id"}]
+
+
+class _FailingConnection:
+    """Fake connection that raises SQLAlchemy errors."""
+
+    def execute(self, statement):
+        raise SQLAlchemyError(f"cannot run {statement}")
