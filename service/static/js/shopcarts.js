@@ -12,6 +12,8 @@ const resultCard = document.querySelector("#result-card");
 const tableBody = document.querySelector("#shopcart-table tbody");
 const listAllBtn = document.querySelector("#list-all");
 const queryForm = document.querySelector("#query-form");
+const listFilterForm = document.querySelector("#list-filter");
+const listResetFilterBtn = document.querySelector("#list-reset-filter");
 
 const forms = {
   create: document.querySelector("#create-form"),
@@ -139,7 +141,7 @@ const renderShopcartCard = (cart) => {
 const renderTable = (carts) => {
   if (!Array.isArray(carts) || carts.length === 0) {
     tableBody.innerHTML =
-      '<tr><td colspan="6" class="empty">No results match your filters.</td></tr>';
+      '<tr><td colspan="6" class="empty">No shopcarts found.</td></tr>';
     return;
   }
 
@@ -202,10 +204,27 @@ const refreshList = async (params) => {
   try {
     const query = params && params.toString() ? `?${params.toString()}` : "";
     const data = await apiRequest(query);
+    if (!Array.isArray(data)) {
+      console.error("Expected array but got:", data);
+      tableBody.innerHTML =
+        '<tr><td colspan="6" class="empty">No shopcarts found.</td></tr>';
+      return;
+    }
     const normalized = data.map((cart) => normalizeCart(cart));
     renderTable(normalized);
+    clearAlert(); // Clear any previous errors on success
   } catch (error) {
-    showAlert(error.message, "error");
+    console.error("Error loading shopcarts:", error);
+    const errorMessage = error.message || "An error occurred";
+    // Check if it's an invalid filter error
+    if (errorMessage.includes("Invalid status") || errorMessage.includes("Invalid filter")) {
+      showAlert("Invalid filter option", "error");
+    } else {
+      showAlert(errorMessage, "error");
+    }
+    // Show empty state on error
+    tableBody.innerHTML =
+      '<tr><td colspan="6" class="empty">No shopcarts found.</td></tr>';
   }
 };
 
@@ -360,11 +379,15 @@ const handleQuery = async (event) => {
   event.preventDefault();
   const params = new URLSearchParams();
   const customerId = getFieldValue(queryForm, "customerId");
-  const statusValue = getFieldValue(queryForm, "status");
+  let statusValue = getFieldValue(queryForm, "status");
   const minValue = getFieldValue(queryForm, "totalPriceGt");
   const maxValue = getFieldValue(queryForm, "totalPriceLt");
   if (customerId) params.set("customer_id", customerId);
-  if (statusValue) params.set("status", statusValue);
+  // Map customer-friendly status names (OPEN/CLOSED) to API values
+  if (statusValue) {
+    // OPEN and CLOSED are sent as-is to the API, which will map them
+    params.set("status", statusValue);
+  }
   if (minValue) params.set("total_price_gt", minValue);
   if (maxValue) params.set("total_price_lt", maxValue);
   await refreshList(params);
@@ -377,6 +400,30 @@ const handleListAll = async () => {
   showAlert("Listing all shopcarts", "info");
 };
 
+const handleListFilter = async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const statusValue = getFieldValue(form, "status");
+  const params = new URLSearchParams();
+  if (statusValue) {
+    params.set("status", statusValue);
+  }
+  await refreshList(params);
+  if (statusValue) {
+    showAlert(`Filtered by status: ${statusValue}`, "info");
+  } else {
+    showAlert("Showing all shopcarts", "info");
+  }
+};
+
+const handleListResetFilter = async () => {
+  if (listFilterForm) {
+    listFilterForm.reset();
+  }
+  await refreshList();
+  showAlert("Filter reset - showing all shopcarts", "info");
+};
+
 forms.create.addEventListener("submit", handleCreate);
 forms.update.addEventListener("submit", handleUpdate);
 forms.read.addEventListener("submit", handleRead);
@@ -384,6 +431,13 @@ forms.delete.addEventListener("submit", handleDelete);
 forms.action.addEventListener("submit", handleAction);
 queryForm.addEventListener("submit", handleQuery);
 listAllBtn.addEventListener("click", handleListAll);
+
+if (listFilterForm) {
+  listFilterForm.addEventListener("submit", handleListFilter);
+}
+if (listResetFilterBtn) {
+  listResetFilterBtn.addEventListener("click", handleListResetFilter);
+}
 
 clearAlert();
 refreshList();

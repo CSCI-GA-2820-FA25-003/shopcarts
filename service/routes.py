@@ -119,20 +119,30 @@ def _parse_status_filter(value) -> str | None:
     """Normalize and validate a status filter."""
     if value is None:
         return None
-    normalized = str(value).strip().lower()
+    normalized = str(value).strip().upper()
     if not normalized:
         abort(
             status.HTTP_400_BAD_REQUEST,
             "status must be a non-empty value when provided.",
         )
+    # Map customer-friendly status names to internal statuses
+    status_mapping = {
+        "OPEN": "active",
+        "CLOSED": "abandoned",  # CLOSED maps to abandoned
+    }
+    # Check if it's a mapped status first
+    if normalized in status_mapping:
+        return status_mapping[normalized]
+    # Otherwise, check against allowed statuses (lowercase)
+    normalized_lower = normalized.lower()
     allowed_statuses = Shopcart.allowed_statuses()
-    if normalized not in allowed_statuses:
-        readable_statuses = ", ".join(sorted(allowed_statuses))
+    if normalized_lower not in allowed_statuses:
+        readable_statuses = ", ".join(sorted(allowed_statuses | {"OPEN", "CLOSED"}))
         abort(
             status.HTTP_400_BAD_REQUEST,
             f"Invalid status '{value}'. Allowed values: {readable_statuses}.",
         )
-    return normalized
+    return normalized_lower
 
 
 def _parse_customer_id_filter(value) -> int | None:

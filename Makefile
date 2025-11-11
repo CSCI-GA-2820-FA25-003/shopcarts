@@ -53,23 +53,8 @@ bdd: ## Run the Behave Selenium UI scenarios (service must be running)
 
 .PHONY: run
 run: ## Run the service (starts, verifies health, then stops)
-	$(info Starting service...)
-	@honcho start > /tmp/honcho.log 2>&1 & \
-	echo $$! > /tmp/honcho.pid; \
-	sleep 5; \
-	for i in 1 2 3 4 5 6 7 8 9 10; do \
-		if curl -s http://127.0.0.1:8080/health >/dev/null 2>&1; then \
-			echo "✓ Service started successfully on http://127.0.0.1:8080"; \
-			kill `cat /tmp/honcho.pid` 2>/dev/null || true; \
-			rm -f /tmp/honcho.pid; \
-			exit 0; \
-		fi; \
-		sleep 1; \
-	done; \
-	echo "✗ Service failed to start within timeout"; \
-	kill `cat /tmp/honcho.pid` 2>/dev/null || true; \
-	rm -f /tmp/honcho.pid; \
-	exit 1
+	$(info Starting service on $(BASE_URL)...)
+	@PORT=$(PORT) honcho start
 
 .PHONY: secret
 secret: ## Generate a secret hex key

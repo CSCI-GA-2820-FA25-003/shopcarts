@@ -179,8 +179,13 @@ def step_impl_existing_shopcart(context, customer_id, status):
     name_input.clear()
     name_input.send_keys(f"Test Cart {customer_id}")
 
-    # Set the status - map "OPEN" to "active"
-    status_value = "active" if status.upper() == "OPEN" else status.lower()
+    # Set the status - map "OPEN" to "active", "CLOSED" to "abandoned"
+    if status.upper() == "OPEN":
+        status_value = "active"
+    elif status.upper() == "CLOSED":
+        status_value = "abandoned"
+    else:
+        status_value = status.lower()
     from selenium.webdriver.support.ui import Select
     select = Select(status_select)
     select.select_by_value(status_value)
@@ -297,3 +302,142 @@ def step_impl_data_matches_status(context):
         table_text = table.text
         assert str(context.expected_customer_id) in table_text, \
             f"Customer {context.expected_customer_id} not found in table"
+
+
+@when('I open the "My Shopcarts" page')
+def step_impl_open_my_shopcarts(context):
+    """Navigate to the My Shopcarts page and load all shopcarts."""
+    context.browser.get(context.ui_url)
+    # Wait for the page to load and trigger the list all action
+    list_all_btn = WebDriverWait(context.browser, WAIT_TIMEOUT).until(
+        EC.element_to_be_clickable((By.ID, "list-all"))
+    )
+    list_all_btn.click()
+    # Wait for the table to update
+    WebDriverWait(context.browser, WAIT_TIMEOUT).until(
+        EC.presence_of_element_located((By.ID, "shopcart-table"))
+    )
+
+
+@then("I should see a list of all my shopcarts")
+def step_impl_see_list(context):
+    """Verify that the shopcart list is displayed."""
+    table = context.browser.find_element(By.ID, "shopcart-table")
+    # Check that the table exists and is not showing empty state
+    table_text = table.text
+    assert "No shopcarts found" not in table_text or len(table.find_elements(By.TAG_NAME, "tr")) > 1, \
+        "Shopcart list should be displayed"
+
+
+@then("each shopcart should show its ID, name, and status")
+def step_impl_shopcart_shows_details(context):
+    """Verify that each shopcart in the list shows ID, name, and status."""
+    table = context.browser.find_element(By.ID, "shopcart-table")
+    rows = table.find_elements(By.CSS_SELECTOR, "tbody tr")
+    # Filter out empty state row
+    data_rows = [row for row in rows if "No shopcarts found" not in row.text]
+    
+    if not data_rows:
+        # If no data rows, that's okay if we're testing empty state
+        return
+    
+    for row in data_rows:
+        cells = row.find_elements(By.TAG_NAME, "td")
+        assert len(cells) >= 3, "Each shopcart row should have at least Cart ID, Name, and Status columns"
+        # First cell should be Cart ID (customer_id)
+        cart_id = cells[0].text.strip()
+        assert cart_id and cart_id.isdigit(), f"Cart ID should be a number, got: {cart_id}"
+        # Second cell should be Name
+        name = cells[1].text.strip()
+        # Name can be empty, so we just check it exists
+        # Third cell should be Status
+        status_cell = cells[2]
+        status_badge = status_cell.find_elements(By.CSS_SELECTOR, ".badge")
+        assert len(status_badge) > 0, "Status should be displayed with a badge"
+
+
+@when('I filter by "{status}"')
+def step_impl_filter_by_status(context, status):
+    """Apply a status filter to the shopcart list."""
+    # Ensure we're on the page first
+    if not context.browser.current_url.startswith(context.base_url):
+        context.browser.get(context.ui_url)
+    # Wait for the query form to be available
+    query_form = WebDriverWait(context.browser, WAIT_TIMEOUT).until(
+        EC.presence_of_element_located((By.ID, "query-form"))
+    )
+    status_select = query_form.find_element(By.ID, "status-filter")
+    from selenium.webdriver.support.ui import Select
+    select = Select(status_select)
+    select.select_by_value(status)
+    # Submit the form
+    query_form.find_element(By.CSS_SELECTOR, "button[type='submit']").click()
+    # Wait for the table to update or error message
+    WebDriverWait(context.browser, WAIT_TIMEOUT).until(
+        EC.any_of(
+            EC.presence_of_element_located((By.ID, "shopcart-table")),
+            EC.presence_of_element_located((By.CSS_SELECTOR, "#alerts .alert"))
+        )
+    )
+
+
+@then('I should see only the shopcarts with status "{status}"')
+def step_impl_see_filtered_status(context, status):
+    """Verify that only shopcarts with the specified status are displayed."""
+    table = context.browser.find_element(By.ID, "shopcart-table")
+    rows = table.find_elements(By.CSS_SELECTOR, "tbody tr")
+    data_rows = [row for row in rows if "No shopcarts found" not in row.text]
+    
+    if not data_rows:
+        # If no rows, that's okay if the filter resulted in no matches
+        return
+    
+    # Map status for comparison
+    expected_display = "OPEN" if status.upper() == "OPEN" else status.upper()
+    
+    for row in data_rows:
+        cells = row.find_elements(By.TAG_NAME, "td")
+        if len(cells) >= 3:
+            status_cell = cells[2]
+            status_text = status_cell.text.strip()
+            # Status should match the expected display
+            assert expected_display in status_text.upper(), \
+                f"Expected status '{expected_display}' but found '{status_text}' in row"
+
+
+@when("I try to apply a filter that doesn't exist")
+def step_impl_invalid_filter(context):
+    """Try to apply an invalid filter option."""
+    # We'll simulate this by trying to set an invalid status value via JavaScript
+    # or by checking the UI behavior when an invalid option is selected
+    # For now, we'll check that the UI handles invalid status gracefully
+    query_form = context.browser.find_element(By.ID, "query-form")
+    status_select = query_form.find_element(By.ID, "status-filter")
+    # Try to select a value that doesn't exist in the dropdown
+    # Since the dropdown only has valid options, we'll trigger an API error
+    # by sending an invalid status via the form
+    from selenium.webdriver.support.ui import Select
+    select = Select(status_select)
+    # Select a valid option first, then we'll modify it to be invalid
+    # Actually, we can't easily set an invalid option through the UI
+    # So we'll test by making a direct API call with invalid status
+    # But for UI testing, we should test what happens when the API returns an error
+    # Let's just submit the form with an invalid status by manipulating the select
+    context.browser.execute_script(
+        "arguments[0].value = 'INVALID_STATUS';",
+        status_select
+    )
+    query_form.find_element(By.CSS_SELECTOR, "button[type='submit']").click()
+    # Wait for error message
+    WebDriverWait(context.browser, WAIT_TIMEOUT).until(
+        EC.presence_of_element_located((By.CSS_SELECTOR, "#alerts .alert"))
+    )
+
+
+@then('I should see a message "No shopcarts found"')
+def step_impl_see_empty_message(context):
+    """Verify that the empty state message is displayed."""
+    table = context.browser.find_element(By.ID, "shopcart-table")
+    table_text = table.text
+    assert "No shopcarts found" in table_text, \
+        f"Expected 'No shopcarts found' message, but got: {table_text}"

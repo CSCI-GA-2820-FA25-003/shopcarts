@@ -45,3 +45,30 @@ Feature: Shopcart creation via admin UI
     Given there is no shopcart with customer_id=777
     When I send a PUT request to update shopcart for customer 777 with status "LOCKED"
     Then I should receive a 404 Not Found response
+
+  Scenario: Retrieve all shopcarts
+    Given the shopcart admin UI is available
+    And there is an existing shopcart with customer_id=101 and status "OPEN"
+    And there is an existing shopcart with customer_id=102 and status "CLOSED"
+    When I open the "My Shopcarts" page
+    Then I should see a list of all my shopcarts
+    And each shopcart should show its ID, name, and status
+
+  Scenario: Filter shopcarts by status
+    Given the shopcart admin UI is available
+    And there is an existing shopcart with customer_id=201 and status "OPEN"
+    And there is an existing shopcart with customer_id=202 and status "CLOSED"
+    When I filter by "OPEN"
+    Then I should see only the shopcarts with status "OPEN"
+
+  Scenario: Invalid filter parameter
+    Given the shopcart admin UI is available
+    When I try to apply a filter that doesn't exist
+    Then I should see an error message "Invalid filter option"
+
+  Scenario: UI shows empty state
+    Given the shopcart admin UI is available
+    And there is no shopcart with customer_id=999
+    When I open the "My Shopcarts" page
+    Then I should see a message "No shopcarts found"
+
