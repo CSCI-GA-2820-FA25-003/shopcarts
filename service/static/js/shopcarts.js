@@ -139,7 +139,7 @@ const renderShopcartCard = (cart) => {
 const renderTable = (carts) => {
   if (!Array.isArray(carts) || carts.length === 0) {
     tableBody.innerHTML =
-      '<tr><td colspan="6" class="empty">No results match your filters.</td></tr>';
+      '<tr><td colspan="7" class="empty">No results match your filters.</td></tr>';
     return;
   }
 
@@ -154,10 +154,23 @@ const renderTable = (carts) => {
           <td>${cart.totalItems}</td>
           <td>${formatCurrency(cart.totalPrice)}</td>
           <td>${formatDate(cart.lastModified)}</td>
+          <td>
+            <button
+              type="button"
+              class="view-cart-btn"
+              data-view-cart="${cart.customerId}"
+              aria-label="View cart ${cart.customerId}"
+            >
+              View Cart
+            </button>
+          </td>
         </tr>
       `;
     })
     .join("");
+  
+  // Bind click events for View Cart buttons
+  bindTableActions();
 };
 
 const fetchJson = async (url, { method = "GET", body, headers = {} } = {}) => {
@@ -214,6 +227,17 @@ const bindResultCardActions = (cart) => {
   const deleteButton = resultCard.querySelector("[data-delete-cart]");
   if (!deleteButton) return;
   deleteButton.addEventListener("click", () => handleResultDelete(cart.customerId));
+};
+
+const bindTableActions = () => {
+  // Bind View Cart buttons in the table
+  const viewButtons = tableBody.querySelectorAll("[data-view-cart]");
+  viewButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const customerId = button.getAttribute("data-view-cart");
+      viewCartById(Number(customerId));
+    });
+  });
 };
 
 const deleteShopcartRequest = (customerId) =>
@@ -293,6 +317,27 @@ const handleUpdate = async (event) => {
   }
 };
 
+const viewCartById = async (customerId) => {
+  if (!customerId) {
+    showAlert("Invalid customer ID", "error");
+    return;
+  }
+  try {
+    const response = await apiRequest(`/${customerId}`);
+    const cart = normalizeCart(response);
+    renderShopcartCard(cart);
+    showAlert(`Loaded shopcart ${customerId}`, "info");
+    // Scroll to the result card
+    resultCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  } catch (error) {
+    const message = error && /not found/i.test(error.message || "")
+      ? "Cart not found"
+      : error?.message || "Unable to load the cart.";
+    showAlert(message, "error");
+    renderShopcartCard(null);
+  }
+};
+
 const handleRead = async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
@@ -301,13 +346,7 @@ const handleRead = async (event) => {
     showAlert("Enter the customer ID you want to fetch", "error");
     return;
   }
-  try {
-    const response = await apiRequest(`/${customerId}`);
-    renderShopcartCard(normalizeCart(response));
-    showAlert(`Loaded shopcart ${customerId}`, "info");
-  } catch (error) {
-    showAlert(error.message, "error");
-  }
+  await viewCartById(customerId);
 };
 
 const handleDelete = async (event) => {
