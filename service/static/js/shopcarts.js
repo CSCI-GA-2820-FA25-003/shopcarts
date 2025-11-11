@@ -120,8 +120,20 @@ const renderShopcartCard = (cart) => {
       <div><span>Created</span>${formatDate(cart.createdDate)}</div>
       <div><span>Updated</span>${formatDate(cart.lastModified)}</div>
     </div>
+    <div class="card-actions destructive">
+      <button
+        type="button"
+        class="delete-cart"
+        data-delete-cart
+        data-customer-id="${cart.customerId}"
+        aria-label="Delete cart ${cart.customerId}"
+      >
+        Delete Cart
+      </button>
+    </div>
     <div class="items">${itemsHtml}</div>
   `;
+  bindResultCardActions(cart);
 };
 
 const renderTable = (carts) => {
@@ -194,6 +206,42 @@ const refreshList = async (params) => {
     renderTable(normalized);
   } catch (error) {
     showAlert(error.message, "error");
+  }
+};
+
+const bindResultCardActions = (cart) => {
+  if (!cart) return;
+  const deleteButton = resultCard.querySelector("[data-delete-cart]");
+  if (!deleteButton) return;
+  deleteButton.addEventListener("click", () => handleResultDelete(cart.customerId));
+};
+
+const deleteShopcartRequest = (customerId) =>
+  apiRequest(`/${customerId}`, { method: "DELETE" });
+
+const handleDeleteError = (error) => {
+  const message =
+    error && /not found/i.test(error.message || "")
+      ? "Cart not found"
+      : error?.message || "Unable to delete the cart.";
+  showAlert(message, "error");
+};
+
+const handleResultDelete = async (customerId) => {
+  if (!customerId) return;
+  const confirm = window.confirm(
+    `Delete shopcart ${customerId}? This action cannot be undone.`
+  );
+  if (!confirm) {
+    return;
+  }
+  try {
+    await deleteShopcartRequest(customerId);
+    renderShopcartCard(null);
+    await refreshList();
+    showAlert(`Shopcart ${customerId} deleted`, "success");
+  } catch (error) {
+    handleDeleteError(error);
   }
 };
 
@@ -271,7 +319,7 @@ const handleDelete = async (event) => {
     return;
   }
   try {
-    await apiRequest(`/${customerId}`, { method: "DELETE" });
+    await deleteShopcartRequest(customerId);
     if (
       !resultCard.hidden &&
       resultCard.textContent.includes(String(customerId))
@@ -282,7 +330,7 @@ const handleDelete = async (event) => {
     form.reset();
     await refreshList();
   } catch (error) {
-    showAlert(error.message, "error");
+    handleDeleteError(error);
   }
 };
 

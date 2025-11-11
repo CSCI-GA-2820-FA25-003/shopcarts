@@ -412,6 +412,12 @@ button.secondary {
   margin-bottom: 0.2rem;
 }
 
+.result-card .card-actions {
+  margin-top: 1rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
 .items table {
   width: 100%;
   border-collapse: collapse;
