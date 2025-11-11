@@ -33,3 +33,15 @@ Feature: Shopcart creation via admin UI
     And the shopcart with customer id 654 is removed outside the UI
     When I delete the shopcart from the details panel
     Then I should see an error message "Cart not found"
+
+  Scenario: Update an existing shopcart successfully
+    Given there is an existing shopcart with customer_id=2 and status "OPEN"
+    When I send a PUT request to update shopcart for customer 2 with status "LOCKED"
+    Then I should receive a 200 OK response
+    And the response body should include the updated status "LOCKED"
+    And the shopcart data should match the updated status
+
+  Scenario: Update a shopcart that does not exist
+    Given there is no shopcart with customer_id=777
+    When I send a PUT request to update shopcart for customer 777 with status "LOCKED"
+    Then I should receive a 404 Not Found response
