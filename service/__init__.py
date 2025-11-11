@@ -68,7 +68,6 @@ def create_app():
         return app
 
 
-
 def _ensure_optional_columns(db):
     """Backfill optional columns (e.g., shopcart.name) when missing."""
     logger = current_app.logger if current_app else None
