@@ -181,16 +181,16 @@
               Customer ID (optional)
               <input type="number" name="customerId" min="1" />
             </label>
-            <label>
-              Status
-              <select name="status">
-                <option value="">Any</option>
-                <option value="OPEN">OPEN</option>
-                <option value="ABANDONED">ABANDONED</option>
-                <option value="PURCHASED">PURCHASED</option>
-                <option value="MERGED">MERGED</option>
-              </select>
-            </label>
+              <label>
+                Status
+                <select name="status">
+                  <option value="">Any</option>
+                  <option value="active">active</option>
+                  <option value="abandoned">abandoned</option>
+                  <option value="locked">locked</option>
+                  <option value="expired">expired</option>
+                </select>
+              </label>
             <label>
               Min Total
               <input type="number" step="0.01" min="0" name="minTotal" />
