@@ -18,9 +18,22 @@ Feature: Shopcart creation via admin UI
     Then I should see an error message "Customer ID is required"
     And the cart should not be created
 
-  # ============================================================================
-  # UPDATE OPERATION
-  # ============================================================================
+  Scenario: Delete a shopcart from the details panel
+    Given a shopcart exists with customer id 321
+    And I am a logged-in customer on the Shopcart page
+    When I load the shopcart details for customer 321
+    And I delete the shopcart from the details panel
+    Then I should receive a confirmation message "Shopcart 321 deleted"
+    And the cart details panel should be cleared
+
+  Scenario: Deleting a missing shopcart surfaces an error
+    Given a shopcart exists with customer id 654
+    And I am a logged-in customer on the Shopcart page
+    And I load the shopcart details for customer 654
+    And the shopcart with customer id 654 is removed outside the UI
+    When I delete the shopcart from the details panel
+    Then I should see an error message "Cart not found"
+
   Scenario: Update an existing shopcart successfully
     Given there is an existing shopcart with customer_id=2 and status "OPEN"
     When I send a PUT request to update shopcart for customer 2 with status "LOCKED"

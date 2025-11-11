@@ -7,7 +7,11 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
-from features.environment import delete_cart_via_ui
+from features.environment import (
+    create_cart_via_api,
+    delete_cart_via_api,
+    delete_cart_via_ui,
+)
 
 WAIT_TIMEOUT = 10
 
@@ -37,6 +41,17 @@ def step_impl_visit_shopcart_page(context):
 def step_impl_on_create_form(context):
     context.browser.get(context.ui_url)
     context.table_snapshot = get_table_html(context)
+
+
+@given("a shopcart exists with customer id {customer_id:d}")
+def step_impl_cart_exists(context, customer_id):
+    create_cart_via_api(context, customer_id, name=f"BDD Cart {customer_id}")
+    context.created_customer_ids.add(customer_id)
+
+
+@given("the shopcart with customer id {customer_id:d} is removed outside the UI")
+def step_impl_cart_removed_elsewhere(context, customer_id):
+    delete_cart_via_api(context, customer_id)
 
 
 @when(
@@ -101,6 +116,45 @@ def step_impl_not_created(context):
         assert latest_html == context.table_snapshot
 
 
+@given("I load the shopcart details for customer {customer_id:d}")
+@when("I load the shopcart details for customer {customer_id:d}")
+def step_impl_load_details(context, customer_id):
+    read_form = context.browser.find_element(By.ID, "read-form")
+    customer_input = read_form.find_element(By.NAME, "customerId")
+    customer_input.clear()
+    customer_input.send_keys(str(customer_id))
+    read_form.find_element(By.CSS_SELECTOR, "button[type='submit']").click()
+    WebDriverWait(context.browser, WAIT_TIMEOUT).until(
+        EC.text_to_be_present_in_element(
+            (By.ID, "result-card"), f"Customer {customer_id}"
+        )
+    )
+    context.active_customer_id = customer_id
+
+
+@when("I delete the shopcart from the details panel")
+def step_impl_delete_from_card(context):
+    customer_id = getattr(context, "active_customer_id", None)
+    assert (
+        customer_id is not None
+    ), "A shopcart must be loaded before invoking the delete button."
+    delete_button = context.browser.find_element(By.CSS_SELECTOR, "[data-delete-cart]")
+    delete_button.click()
+    alert = WebDriverWait(context.browser, WAIT_TIMEOUT).until(EC.alert_is_present())
+    alert.accept()
+
+
+@then("the cart details panel should be cleared")
+def step_impl_card_cleared(context):
+    def card_is_hidden(driver):
+        element = driver.find_element(By.ID, "result-card")
+        return element.get_attribute("hidden") is not None
+
+    WebDriverWait(context.browser, WAIT_TIMEOUT).until(card_is_hidden)
+    result_card = context.browser.find_element(By.ID, "result-card")
+    assert result_card.get_attribute("hidden") is not None
+    assert not result_card.text.strip()
+
 @given('there is an existing shopcart with customer_id={customer_id:d} and status "{status}"')
 def step_impl_existing_shopcart(context, customer_id, status):
     """Create a shopcart via the UI for testing update operations."""
@@ -113,31 +167,31 @@ def step_impl_existing_shopcart(context, customer_id, status):
         )
     except Exception:
         pass  # Cart might not exist, which is fine
-    
+
     # Create the shopcart with the specified status
     customer_input = context.browser.find_element(By.ID, "create-customer-id")
     name_input = context.browser.find_element(By.ID, "create-name")
     status_select = context.browser.find_element(By.CSS_SELECTOR, "#create-form select[name='status']")
     submit_button = context.browser.find_element(By.ID, "create-submit")
-    
+
     customer_input.clear()
     customer_input.send_keys(str(customer_id))
     name_input.clear()
     name_input.send_keys(f"Test Cart {customer_id}")
-    
+
     # Set the status - map "OPEN" to "active"
     status_value = "active" if status.upper() == "OPEN" else status.lower()
     from selenium.webdriver.support.ui import Select
     select = Select(status_select)
     select.select_by_value(status_value)
-    
+
     submit_button.click()
-    
+
     # Wait for success message
     WebDriverWait(context.browser, WAIT_TIMEOUT).until(
         EC.text_to_be_present_in_element((By.CSS_SELECTOR, "#alerts .alert"), "created")
     )
-    
+
     # Store for cleanup
     if not hasattr(context, "cleanup_customer_ids"):
         context.cleanup_customer_ids = []
@@ -166,18 +220,18 @@ def step_impl_update_shopcart(context, customer_id, status):
     customer_input = update_form.find_element(By.CSS_SELECTOR, "input[name='customerId']")
     status_select = update_form.find_element(By.CSS_SELECTOR, "select[name='status']")
     submit_button = update_form.find_element(By.CSS_SELECTOR, "button[type='submit']")
-    
+
     customer_input.clear()
     customer_input.send_keys(str(customer_id))
-    
+
     # Map status values - "OPEN" to "active", "LOCKED" to "locked", etc.
     status_value = "active" if status.upper() == "OPEN" else status.lower()
     from selenium.webdriver.support.ui import Select
     select = Select(status_select)
     select.select_by_value(status_value)
-    
+
     submit_button.click()
-    
+
     # Store the expected status for verification
     context.expected_status = status
     context.expected_customer_id = customer_id
@@ -217,7 +271,7 @@ def step_impl_response_has_status(context, status):
     )
     result_card = context.browser.find_element(By.ID, "result-card")
     assert not result_card.get_attribute("hidden"), "Result card should be visible"
-    
+
     # Map status for display - "LOCKED" might show as "LOCKED" or "locked"
     status_display = status.upper() if status.upper() == "LOCKED" else status
     result_text = result_card.text
@@ -237,7 +291,7 @@ def step_impl_data_matches_status(context):
             status_display = context.expected_status.upper() if context.expected_status.upper() == "LOCKED" else context.expected_status
             assert status_display in result_text or context.expected_status.lower() in result_text.lower(), \
                 f"Status '{context.expected_status}' not found in result card"
-        
+
         # Verify in table
         table = context.browser.find_element(By.ID, "shopcart-table")
         table_text = table.text

@@ -76,18 +76,18 @@ docker run --name shopcarts-db -e POSTGRES_PASSWORD=postgres \
 ## Running the Service
 Choose one of the following:
 - `pipenv run flask run` (default Flask dev server on `http://127.0.0.1:5000`)
-- `make run` (uses Honcho to launch Gunicorn via the `Procfile`)
+- `make run` (uses Honcho to launch Gunicorn via the `Procfile`, binding to `http://127.0.0.1:8080`)
 
 When the service starts you should see log output confirming the database tables were created and the server is accepting requests. A lightweight health probe is available at `GET /health`.
 
 ## Admin UI
-Requirement #80 adds a lightweight administrator console backed by the same REST API. Once the Flask app is running, open [`http://localhost:5000/ui`](http://localhost:5000/ui) (alias `/admin`) to load the single-page interface. All buttons submit requests to the live endpoints, so you can drive the service exactly the way Selenium/Behave tests will.
+Requirement #80 adds a lightweight administrator console backed by the same REST API. Once the Flask app is running, open [`http://localhost:5000/ui`](http://localhost:5000/ui) (alias `/admin`) or, if you started the service via `make run`, [`http://localhost:8080/ui`](http://localhost:8080/ui). All buttons submit requests to the live endpoints, so you can drive the service exactly the way Selenium/Behave tests will.
 
 The UI currently supports:
 - **Create**: enter a `customer_id`, optional cart `name`, and optional status to POST `/shopcarts`. Successful submissions surface the `"Shopcart created successfully"` toast and immediately refresh the grid.
 - **Read**: fetch a single cart by customer id and inspect its metadata/items.
 - **Update**: change the cart status with PUT `/shopcarts/<customer_id>`.
-- **Delete**: remove a cart in one click.
+- **Delete**: remove a cart in one click—either via the delete form or the new Delete Cart button on the detail panel.
 - **List/Query**: filter `/shopcarts` by status, customer, or total price bounds, or list everything.
 - **Action**: run helper endpoints (`checkout`, `cancel`, `lock`, `expire`, `reactivate`) to demonstrate the extra workflow action.
 
@@ -97,11 +97,13 @@ The results section shows both the focused cart (for scenario-by-scenario verifi
 Requirement #82 adds automated UI coverage using Behave + Selenium:
 1. Start the Flask service locally (e.g., `make run`).  
 2. Ensure a Chromium/Chrome browser _and_ matching chromedriver are available (for Debian-based systems: `sudo apt-get install -y chromium chromium-driver`).  
-3. In another terminal execute `make bdd` (defaults to `BASE_URL=http://127.0.0.1:5000`; override with `BASE_URL=<url>` if needed).
+3. In another terminal execute `make bdd` (defaults to `BASE_URL=http://127.0.0.1:8080`; override with `BASE_URL=<url>` if needed).
 
-The feature file `features/shopcarts.feature` covers two scenarios:
+The feature file `features/shopcarts.feature` covers four scenarios:
 - Successful cart creation (Customer ID + optional name) displays the confirmation toast and lists the new cart with status `OPEN`.
 - Submitting the Create Cart form without a Customer ID produces the validation error “Customer ID is required” and leaves the list untouched.
+- Deleting a cart from the detail panel via the new **Delete Cart** button requests confirmation, removes the cart, and surfaces the success toast.
+- Attempting to delete a cart that has already been removed surfaces the “Cart not found” error.
 
 Selenium downloads a headless Chrome driver via `webdriver-manager`. Ensure the UI remains accessible during the run; Behave only interacts with the service through the `/ui` page.
 
