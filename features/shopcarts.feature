@@ -37,11 +37,62 @@ Feature: Shopcart creation via admin UI
   Scenario: Update an existing shopcart successfully
     Given there is an existing shopcart with customer_id=2 and status "OPEN"
     When I send a PUT request to update shopcart for customer 2 with status "LOCKED"
-    Then I should receive a 200 OK response
+    Then I should receive a 200 OK response in the UI
     And the response body should include the updated status "LOCKED"
     And the shopcart data should match the updated status
 
   Scenario: Update a shopcart that does not exist
     Given there is no shopcart with customer_id=777
     When I send a PUT request to update shopcart for customer 777 with status "LOCKED"
-    Then I should receive a 404 Not Found response
+    Then I should receive a 404 Not Found response in the UI
+
+  Scenario: Query shopcarts by customer ID
+    Given shopcarts exist for customer_id=5
+    When I send a GET request to "/shopcarts?customer_id=5"
+    Then I should receive a 200 OK response
+    And all returned shopcarts should have customer_id=5
+
+  Scenario: Query shopcarts by status
+    Given shopcarts exist with status="OPEN"
+    When I send a GET request to "/shopcarts?status=OPEN"
+    Then I should receive a 200 OK response
+    And all returned shopcarts should have status="OPEN"
+
+  Scenario: Query shopcarts by price range
+    Given shopcarts exist with various total prices
+    When I send a GET request to "/shopcarts?min_total=50.0&max_total=200.0"
+    Then I should receive a 200 OK response
+    And all returned shopcarts should have total_price between 50.0 and 200.0
+
+  Scenario: Query with invalid parameter
+    Given the service is running
+    When I send a GET request to "/shopcarts?status=INVALID_STATUS"
+    Then I should receive a 400 Bad Request response
+
+  Scenario: Filter shopcarts by status in the UI
+    Given the following shopcarts exist:
+      | customer_id | status    | total |
+      | 910         | OPEN      | 75.00 |
+      | 911         | PURCHASED | 90.00 |
+    And I am a logged-in customer on the Shopcart page
+    When I filter shopcarts by status "OPEN" in the UI
+    Then the UI should only list shopcarts with status "OPEN"
+
+  Scenario: Invalid UI price range shows warning
+    Given the following shopcarts exist:
+      | customer_id | status | total |
+      | 920         | OPEN   | 60.00 |
+    And I am a logged-in customer on the Shopcart page
+    When I submit an invalid price range in the UI
+    Then I should see a warning message "Minimum total cannot exceed the maximum total."
+
+  Scenario: Clear Filters resets the list
+    Given the following shopcarts exist:
+      | customer_id | status    | total |
+      | 930         | OPEN      | 80.00 |
+      | 931         | ABANDONED | 95.00 |
+    And I am a logged-in customer on the Shopcart page
+    When I filter shopcarts by customer id 930
+    And I clear the UI filters
+    Then the filter form should be reset
+    And the UI should show at least 2 shopcarts
