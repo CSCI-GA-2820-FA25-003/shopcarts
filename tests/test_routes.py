@@ -560,10 +560,11 @@ class TestYourResourceService(TestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_delete_non_existing_shopcart(self):
-        """It should Delete a Shopcart even if it doesn't exist"""
+        """It should return 404 when deleting a non-existent Shopcart"""
         response = self.client.delete(f"{BASE_URL}/0")
-        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-        self.assertEqual(len(response.data), 0)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        body = response.get_json()
+        self.assertIn("was not found", body["message"])
 
     # ----------------------------------------------------------
     # TEST UPDATE

@@ -321,12 +321,16 @@ def delete_shopcarts(customer_id):
     """
     app.logger.info("Request to Delete a shopcart for customer [%s]", customer_id)
 
-    # Delete the Shopcart if it exists
     shopcart = Shopcart.find_by_customer_id(customer_id).first()
-    if shopcart:
-        app.logger.info("Shopcart with ID: %d found.", shopcart.id)
-        shopcart.delete()
+    if not shopcart:
+        app.logger.warning("Shopcart for customer %s was not found.", customer_id)
+        abort(
+            status.HTTP_404_NOT_FOUND,
+            f"Shopcart for customer '{customer_id}' was not found.",
+        )
 
+    app.logger.info("Shopcart with ID: %d found.", shopcart.id)
+    shopcart.delete()
     app.logger.info("Shopcart delete complete for customer: %s.", customer_id)
     return {}, status.HTTP_204_NO_CONTENT
 
