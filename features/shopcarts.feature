@@ -17,3 +17,18 @@ Feature: Shopcart creation via admin UI
     When I submit the form without entering a customer ID
     Then I should see an error message "Customer ID is required"
     And the cart should not be created
+
+  # ============================================================================
+  # UPDATE OPERATION
+  # ============================================================================
+  Scenario: Update an existing shopcart successfully
+    Given there is an existing shopcart with customer_id=2 and status "OPEN"
+    When I send a PUT request to update shopcart for customer 2 with status "LOCKED"
+    Then I should receive a 200 OK response
+    And the response body should include the updated status "LOCKED"
+    And the shopcart data should match the updated status
+
+  Scenario: Update a shopcart that does not exist
+    Given there is no shopcart with customer_id=777
+    When I send a PUT request to update shopcart for customer 777 with status "LOCKED"
+    Then I should receive a 404 Not Found response
