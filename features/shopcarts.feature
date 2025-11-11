@@ -68,7 +68,7 @@ Feature: Shopcart creation via admin UI
 
   Scenario: UI shows empty state
     Given the shopcart admin UI is available
-    And there is no shopcart with customer_id=999
+    And all shopcarts are deleted
     When I open the "My Shopcarts" page
     Then I should see a message "No shopcarts found"
 
