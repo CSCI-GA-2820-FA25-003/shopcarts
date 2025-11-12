@@ -45,3 +45,11 @@ Feature: Shopcart creation via admin UI
     Given there is no shopcart with customer_id=777
     When I send a PUT request to update shopcart for customer 777 with status "LOCKED"
     Then I should receive a 404 Not Found response
+
+  Scenario: View cart details from table using View Cart button
+    Given a shopcart exists with customer id 555
+    And I am a logged-in customer on the Shopcart page
+    When I click the "View Cart" button for customer 555 in the table
+    Then I should see the shopcart details displayed in the result card
+    And the result card should show customer ID 555
+    And the result card should show the cart status
