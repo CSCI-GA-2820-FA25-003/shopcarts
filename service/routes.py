@@ -106,10 +106,11 @@ def _compute_cart_total(cart: Shopcart) -> Decimal:
 STATUS_ALIAS_MAP = {
     "open": "active",
     "active": "active",
+    "closed": "abandoned",  # CLOSED maps to abandoned
     "abandoned": "abandoned",
-    "purchased": "locked",
+    "purchased": "locked",  # PURCHASED maps to locked
     "locked": "locked",
-    "merged": "expired",
+    "merged": "expired",  # MERGED maps to expired
     "expired": "expired",
 }
 
@@ -136,19 +137,16 @@ def _parse_status_filter(value) -> str | None:
             status.HTTP_400_BAD_REQUEST,
             "status must be a non-empty value when provided.",
         )
-    # Map customer-friendly status names to internal statuses
-    status_mapping = {
-        "OPEN": "active",
-        "CLOSED": "abandoned",  # CLOSED maps to abandoned
-    }
-    # Check if it's a mapped status first
-    if normalized in status_mapping:
-        return status_mapping[normalized]
-    # Otherwise, check against allowed statuses (lowercase)
+    # Map customer-friendly status names to internal statuses using STATUS_ALIAS_MAP
     normalized_lower = normalized.lower()
+    if normalized_lower in STATUS_ALIAS_MAP:
+        return STATUS_ALIAS_MAP[normalized_lower]
+    # Otherwise, check against allowed statuses (lowercase)
     allowed_statuses = Shopcart.allowed_statuses()
     if normalized_lower not in allowed_statuses:
-        readable_statuses = ", ".join(sorted(allowed_statuses | {"OPEN", "CLOSED"}))
+        # Build friendly status names for error message
+        friendly_names = {"OPEN", "CLOSED", "PURCHASED", "MERGED"}
+        readable_statuses = ", ".join(sorted(allowed_statuses | friendly_names))
         abort(
             status.HTTP_400_BAD_REQUEST,
             f"Invalid status '{value}'. Allowed values: {readable_statuses}.",
