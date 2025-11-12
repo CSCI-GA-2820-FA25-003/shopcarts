@@ -386,9 +386,8 @@ const handleQuery = async (event) => {
   const minValue = getFieldValue(queryForm, "totalPriceGt");
   const maxValue = getFieldValue(queryForm, "totalPriceLt");
   if (customerId) params.set("customer_id", customerId);
-  // Map customer-friendly status names (OPEN/CLOSED) to API values
+  // Set status filter value
   if (statusValue) {
-    // OPEN and CLOSED are sent as-is to the API, which will map them
     params.set("status", statusValue);
   }
   if (minValue) params.set("total_price_gt", minValue);

@@ -48,18 +48,18 @@ Feature: Shopcart creation via admin UI
 
   Scenario: Retrieve all shopcarts
     Given the shopcart admin UI is available
-    And there is an existing shopcart with customer_id=101 and status "OPEN"
-    And there is an existing shopcart with customer_id=102 and status "CLOSED"
+    And there is an existing shopcart with customer_id=101 and status "ACTIVE"
+    And there is an existing shopcart with customer_id=102 and status "ABANDONED"
     When I open the "My Shopcarts" page
     Then I should see a list of all my shopcarts
     And each shopcart should show its ID, name, and status
 
   Scenario: Filter shopcarts by status
     Given the shopcart admin UI is available
-    And there is an existing shopcart with customer_id=201 and status "OPEN"
-    And there is an existing shopcart with customer_id=202 and status "CLOSED"
-    When I filter by "OPEN"
-    Then I should see only the shopcarts with status "OPEN"
+    And there is an existing shopcart with customer_id=201 and status "ACTIVE"
+    And there is an existing shopcart with customer_id=202 and status "ABANDONED"
+    When I filter by "ACTIVE"
+    Then I should see only the shopcarts with status "ACTIVE"
 
   Scenario: Invalid filter parameter
     Given the shopcart admin UI is available
@@ -71,4 +71,27 @@ Feature: Shopcart creation via admin UI
     And all shopcarts are deleted
     When I open the "My Shopcarts" page
     Then I should see a message "No shopcarts found"
+
+  Scenario: Query shopcarts by customer ID
+    Given shopcarts exist for customer_id=5
+    When I send a GET request to "/shopcarts?customer_id=5"
+    Then I should receive a 200 OK response
+    And all returned shopcarts should have customer_id=5
+
+  Scenario: Query shopcarts by status
+    Given shopcarts exist with status="ACTIVE"
+    When I send a GET request to "/shopcarts?status=ACTIVE"
+    Then I should receive a 200 OK response
+    And all returned shopcarts should have status="ACTIVE"
+
+  Scenario: Query shopcarts by price range
+    Given shopcarts exist with various total prices
+    When I send a GET request to "/shopcarts?min_total=50.0&max_total=200.0"
+    Then I should receive a 200 OK response
+    And all returned shopcarts should have total_price between 50.0 and 200.0
+
+  Scenario: Query with invalid parameter
+    Given the service is running
+    When I send a GET request to "/shopcarts?status=INVALID_STATUS"
+    Then I should receive a 400 Bad Request response
 

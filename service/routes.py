@@ -104,9 +104,7 @@ def _compute_cart_total(cart: Shopcart) -> Decimal:
 
 
 STATUS_ALIAS_MAP = {
-    "open": "active",
     "active": "active",
-    "closed": "abandoned",  # CLOSED maps to abandoned
     "abandoned": "abandoned",
     "purchased": "locked",  # PURCHASED maps to locked
     "locked": "locked",
@@ -145,7 +143,7 @@ def _parse_status_filter(value) -> str | None:
     allowed_statuses = Shopcart.allowed_statuses()
     if normalized_lower not in allowed_statuses:
         # Build friendly status names for error message
-        friendly_names = {"OPEN", "CLOSED", "PURCHASED", "MERGED"}
+        friendly_names = {"PURCHASED", "MERGED"}
         readable_statuses = ", ".join(sorted(allowed_statuses | friendly_names))
         abort(
             status.HTTP_400_BAD_REQUEST,
