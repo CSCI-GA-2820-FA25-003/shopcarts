@@ -146,7 +146,11 @@ def _parse_status_filter(value) -> str | None:
     if normalized_lower not in allowed_statuses:
         # Build friendly status names for error message
         friendly_names = {"OPEN", "CLOSED", "PURCHASED", "MERGED"}
-        readable_statuses = ", ".join(sorted(allowed_statuses | friendly_names))
+        # Combine and sort all valid status values (canonical + friendly)
+        all_valid_statuses = sorted(
+            allowed_statuses | {s.upper() for s in allowed_statuses} | friendly_names
+        )
+        readable_statuses = ", ".join(all_valid_statuses)
         abort(
             status.HTTP_400_BAD_REQUEST,
             f"Invalid status '{value}'. Allowed values: {readable_statuses}.",
