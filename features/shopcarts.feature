@@ -10,7 +10,7 @@ Feature: Shopcart creation via admin UI
     Given I am a logged-in customer on the Shopcart page
     When I submit a valid "Create Cart" form with customer_id=101 and name="My Summer Cart"
     Then I should receive a confirmation message "Shopcart created successfully"
-    And I should see the new cart listed with status "OPEN"
+    And I should see the new cart listed with status "ACTIVE"
 
   Scenario: Invalid request body
     Given I am on the Create Shopcart form
@@ -35,9 +35,9 @@ Feature: Shopcart creation via admin UI
     Then I should see an error message "Cart not found"
 
   Scenario: Update an existing shopcart successfully
-    Given there is an existing shopcart with customer_id=2 and status "OPEN"
+    Given there is an existing shopcart with customer_id=2 and status "ACTIVE"
     When I send a PUT request to update shopcart for customer 2 with status "LOCKED"
-    Then I should receive a 200 OK response
+    Then I should receive a 200 OK response in the UI
     And the response body should include the updated status "LOCKED"
     And the shopcart data should match the updated status
 

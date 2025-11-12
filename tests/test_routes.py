@@ -407,6 +407,31 @@ class TestYourResourceService(TestCase):
         self.assertTrue(any(cart["customer_id"] == locked_cart.customer_id for cart in data))
         self.assertFalse(any(cart["customer_id"] == active_cart.customer_id for cart in data))
 
+    def test_list_shopcarts_filter_by_friendly_status(self):
+        """It should accept human-friendly status values like OPEN/PURCHASED"""
+        open_cart = self._create_shopcart_for_customer(5001, "active")
+        locked_cart = self._create_shopcart_for_customer(5002, "locked")
+
+        response = self.client.get(f"{BASE_URL}?status=OPEN")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.get_json()
+        self.assertTrue(
+            all(entry["status"] == "active" for entry in data)
+        )
+        self.assertTrue(
+            any(entry["customer_id"] == open_cart["customer_id"] for entry in data)
+        )
+
+        response = self.client.get(f"{BASE_URL}?status=PURCHASED")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.get_json()
+        self.assertTrue(
+            all(entry["status"] == "locked" for entry in data)
+        )
+        self.assertTrue(
+            any(entry["customer_id"] == locked_cart["customer_id"] for entry in data)
+        )
+
     def test_list_shopcarts_filter_total_price_less_than(self):
         """It should filter carts with totals below a threshold"""
         low = self._create_cart_with_items(
@@ -423,7 +448,7 @@ class TestYourResourceService(TestCase):
             ],
         )
 
-        response = self.client.get(f"{BASE_URL}?total_price_lt=40")
+        response = self.client.get(f"{BASE_URL}?max_total=40")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         data = response.get_json()
@@ -445,11 +470,38 @@ class TestYourResourceService(TestCase):
             ],
         )
 
-        response = self.client.get(f"{BASE_URL}?total_price_gt=80")
+        response = self.client.get(f"{BASE_URL}?min_total=80")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.get_json()
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]["customer_id"], high.customer_id)
+
+    def test_list_shopcarts_filter_total_price_alias_params(self):
+        """Legacy total_price_gt/lt parameters should still be honored"""
+        low = self._create_cart_with_items(
+            7301,
+            [
+                (3601, Decimal("15.00"), 2),
+            ],
+        )
+        high = self._create_cart_with_items(
+            7302,
+            [
+                (3602, Decimal("80.00"), 2),
+            ],
+        )
+        response = self.client.get(f"{BASE_URL}?total_price_lt=40")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(all(entry["customer_id"] == low.customer_id for entry in response.get_json()))
+
+        response = self.client.get(f"{BASE_URL}?total_price_gt=120")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(all(entry["customer_id"] == high.customer_id for entry in response.get_json()))
+
+        response = self.client.get(f"{BASE_URL}?total_price_gt=50&total_price_lt=200")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ids = {entry["customer_id"] for entry in response.get_json()}
+        self.assertIn(high.customer_id, ids)
 
     def test_list_shopcarts_filter_total_price_range(self):
         """It should filter carts within a total price range"""
@@ -472,9 +524,7 @@ class TestYourResourceService(TestCase):
             ],
         )
 
-        response = self.client.get(
-            f"{BASE_URL}?total_price_gt=50&total_price_lt=80"
-        )
+        response = self.client.get(f"{BASE_URL}?min_total=50&max_total=80")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.get_json()
         self.assertEqual(len(data), 1)
@@ -482,15 +532,15 @@ class TestYourResourceService(TestCase):
 
     def test_list_shopcarts_invalid_total_price(self):
         """It should reject invalid total price filters"""
-        response = self.client.get(f"{BASE_URL}?total_price_lt=not-a-number")
+        response = self.client.get(f"{BASE_URL}?max_total=not-a-number")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         data = response.get_json()
-        self.assertIn("total_price_lt", data["message"])
+        self.assertIn("max_total", data["message"])
 
-        response = self.client.get(f"{BASE_URL}?total_price_lt=50&total_price_gt=60")
+        response = self.client.get(f"{BASE_URL}?max_total=50&min_total=60")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         data = response.get_json()
-        self.assertIn("total_price_lt must be greater", data["message"])
+        self.assertIn("max_total must be greater", data["message"])
 
     def test_list_shopcarts_invalid_status(self):
         """It should reject unsupported status filters"""

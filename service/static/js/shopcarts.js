@@ -10,7 +10,7 @@ const actionEndpoints = {
 const alertsRegion = document.querySelector("#alerts");
 const resultCard = document.querySelector("#result-card");
 const tableBody = document.querySelector("#shopcart-table tbody");
-const listAllBtn = document.querySelector("#list-all");
+const clearFiltersBtn = document.querySelector("#clear-filters");
 const queryForm = document.querySelector("#query-form");
 
 const forms = {
@@ -46,13 +46,16 @@ const clearAlert = () => {
 const normalizeStatus = (value) =>
   (value ?? "active").toString().trim().toLowerCase() || "active";
 
-const formatStatusLabel = (value) => {
-  const normalized = normalizeStatus(value);
-  if (normalized === "active") {
-    return "OPEN";
-  }
-  return normalized.toUpperCase();
+const STATUS_DISPLAY = {
+  active: "ACTIVE",
+  abandoned: "ABANDONED",
+  locked: "LOCKED",
+  expired: "EXPIRED",
 };
+
+const formatStatusLabel = (value) =>
+  STATUS_DISPLAY[normalizeStatus(value)] ||
+  normalizeStatus(value).toUpperCase();
 
 const normalizeCart = (raw = {}) => {
   if (!raw || typeof raw !== "object") return null;
@@ -400,20 +403,48 @@ const handleQuery = async (event) => {
   const params = new URLSearchParams();
   const customerId = getFieldValue(queryForm, "customerId");
   const statusValue = getFieldValue(queryForm, "status");
-  const minValue = getFieldValue(queryForm, "totalPriceGt");
-  const maxValue = getFieldValue(queryForm, "totalPriceLt");
+  const minRaw = getFieldValue(queryForm, "minTotal");
+  const maxRaw = getFieldValue(queryForm, "maxTotal");
+
+  const parseBound = (value, label) => {
+    if (!value) return null;
+    const numeric = Number(value);
+    if (Number.isNaN(numeric)) {
+      throw new Error(`${label} must be a valid number.`);
+    }
+    if (numeric < 0) {
+      throw new Error(`${label} cannot be negative.`);
+    }
+    return numeric;
+  };
+
+  let minValue = null;
+  let maxValue = null;
+  try {
+    minValue = parseBound(minRaw, "Min total");
+    maxValue = parseBound(maxRaw, "Max total");
+  } catch (error) {
+    showAlert(error.message, "warning");
+    return;
+  }
+
+  if (minValue !== null && maxValue !== null && minValue > maxValue) {
+    showAlert("Minimum total cannot exceed the maximum total.", "warning");
+    return;
+  }
+
   if (customerId) params.set("customer_id", customerId);
   if (statusValue) params.set("status", statusValue);
-  if (minValue) params.set("total_price_gt", minValue);
-  if (maxValue) params.set("total_price_lt", maxValue);
+  if (minRaw) params.set("min_total", minRaw);
+  if (maxRaw) params.set("max_total", maxRaw);
   await refreshList(params);
   showAlert("Query completed", "info");
 };
 
-const handleListAll = async () => {
+const handleClearFilters = async () => {
   queryForm.reset();
   await refreshList();
-  showAlert("Listing all shopcarts", "info");
+  showAlert("Filters cleared. Showing all shopcarts.", "info");
 };
 
 forms.create.addEventListener("submit", handleCreate);
@@ -422,7 +453,9 @@ forms.read.addEventListener("submit", handleRead);
 forms.delete.addEventListener("submit", handleDelete);
 forms.action.addEventListener("submit", handleAction);
 queryForm.addEventListener("submit", handleQuery);
-listAllBtn.addEventListener("click", handleListAll);
+if (clearFiltersBtn) {
+  clearFiltersBtn.addEventListener("click", handleClearFilters);
+}
 
 clearAlert();
 refreshList();

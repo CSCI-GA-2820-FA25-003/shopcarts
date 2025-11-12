@@ -88,10 +88,10 @@ The UI currently supports:
 - **Read**: fetch a single cart by customer id and inspect its metadata/items.
 - **Update**: change the cart status with PUT `/shopcarts/<customer_id>`.
 - **Delete**: remove a cart in one click—either via the delete form or the new Delete Cart button on the detail panel.
-- **List/Query**: filter `/shopcarts` by status, customer, or total price bounds, or list everything.
+- **List/Query**: filter `/shopcarts` by customer id, canonical statuses (`active`, `abandoned`, `locked`, `expired`), or min/max totals. Invalid ranges are rejected client-side with a warning toast, and a **Clear Filters** button resets the form/table in one click.
 - **Action**: run helper endpoints (`checkout`, `cancel`, `lock`, `expire`, `reactivate`) to demonstrate the extra workflow action.
 
-The results section shows both the focused cart (for scenario-by-scenario verification) and a live table of all carts returned by the latest query so that CRUD workflows remain visible while you test. Status pills are automatically uppercased (`OPEN`, `LOCKED`, etc.) to match the stakeholder wording used in the BDD scenarios.
+The results section shows both the focused cart (for scenario-by-scenario verification) and a live table of all carts returned by the latest query so that CRUD workflows remain visible while you test. Status pills are automatically uppercased (`ACTIVE`, `LOCKED`, etc.) to match the stakeholder wording used in the BDD scenarios.
 
 ## BDD UI Scenarios
 Requirement #82 adds automated UI coverage using Behave + Selenium:
@@ -99,11 +99,12 @@ Requirement #82 adds automated UI coverage using Behave + Selenium:
 2. Ensure a Chromium/Chrome browser _and_ matching chromedriver are available (for Debian-based systems: `sudo apt-get install -y chromium chromium-driver`).  
 3. In another terminal execute `make bdd` (defaults to `BASE_URL=http://127.0.0.1:8080`; override with `BASE_URL=<url>` if needed).
 
-The feature file `features/shopcarts.feature` covers four scenarios:
-- Successful cart creation (Customer ID + optional name) displays the confirmation toast and lists the new cart with status `OPEN`.
+The feature file `features/shopcarts.feature` exercises the full flow:
+- Successful cart creation (Customer ID + optional name) displays the confirmation toast and lists the new cart with status `ACTIVE`.
 - Submitting the Create Cart form without a Customer ID produces the validation error “Customer ID is required” and leaves the list untouched.
-- Deleting a cart from the detail panel via the new **Delete Cart** button requests confirmation, removes the cart, and surfaces the success toast.
-- Attempting to delete a cart that has already been removed surfaces the “Cart not found” error.
+- Deleting a cart from the detail panel via the **Delete Cart** button requests confirmation, removes the cart, and surfaces the success toast (with error coverage when the cart is already gone).
+- Querying the REST API by customer id, canonical statuses, and min/max totals—plus negative cases for invalid parameters.
+- UI-specific scenarios that drive the new filters, ensure the grid updates dynamically, validate bad ranges, and verify the **Clear Filters** reset behavior.
 
 Selenium downloads a headless Chrome driver via `webdriver-manager`. Ensure the UI remains accessible during the run; Behave only interacts with the service through the `/ui` page.
 
@@ -117,7 +118,7 @@ All tests require the service dependencies to be installed and a database connec
 All request and response bodies are JSON. Unless otherwise noted, endpoints that accept a body require the header `Content-Type: application/json`. Numeric identifiers (`customer_id`, `product_id`, `item_id`, etc.) must be sent as integers.
 
 ### Shopcart Statuses
-Valid values are `active`, `abandoned`, `locked`, and `expired`. The helper endpoints listed below transition carts between these states.
+Valid persisted values are `active`, `abandoned`, `locked`, and `expired`. The UI now surfaces the same canonical labels to match what the API stores, and the list endpoint accepts either flavor (e.g., `status=OPEN` or `status=active`) for backwards compatibility.
 
 ### Service Metadata
 | Method | Path | Description | Notes |
@@ -128,14 +129,14 @@ Valid values are `active`, `abandoned`, `locked`, and `expired`. The helper endp
 ### Shopcart Collection
 | Method | Path | Description | Required Input |
 | ------ | ---- | ----------- | -------------- |
-| POST | `/shopcarts` | Create a new shopcart | Body: `{ "customer_id": 1, "status": "active", "items": [] }`<br>`customer_id` (int) is required and must be unique. Optional fields: `status` (from the valid status list), `total_items`, `items` (see schema below). |
+| POST | `/shopcarts` | Create a new shopcart | Body: `{ "customer_id": 1, "status": "active", "items": [] }`<br>`customer_id` (int) is required and must be unique. Optional fields: `status` (from the valid status list or its friendly alias), `total_items`, `items` (see schema below). |
 | GET | `/shopcarts` | List shopcarts with optional filters | Query parameters listed below. |
 
 Supported query parameters:
-- `status`: must be one of the valid status values (case-insensitive).
+- `status`: accepts `active`, `abandoned`, `locked`, `expired`; their friendly aliases (`OPEN`, `ABANDONED`, `PURCHASED`, `MERGED`) are still honored case-insensitively for older clients.
 - `customer_id`: integer equality match.
 - `created_after` / `created_before`: ISO8601 timestamps (e.g. `2024-01-02T00:00:00+00:00`). Missing timezones default to UTC.
-- `total_price_gt` / `total_price_lt`: decimal totals computed as `sum(quantity * price)`. Provide both to filter within a range; the upper bound must be ≥ the lower bound.
+- `min_total` / `max_total`: decimal totals computed as `sum(quantity * price)`. Provide both to filter within a range; the upper bound must be ≥ the lower bound. Legacy parameters `total_price_gt` / `total_price_lt` remain supported for backwards compatibility.
 
 Filtering rules:
 - Filters can be combined; all constraints must match for a cart to be returned.
