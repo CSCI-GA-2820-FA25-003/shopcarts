@@ -134,6 +134,15 @@ class TestYourResourceService(TestCase):
     #  P L A C E   T E S T   C A S E S   H E R E
     ######################################################################
 
+    def test_health_check(self):
+        """It should return health status"""
+        resp = self.client.get("/health")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.get_json()
+        self.assertIsNotNone(data)
+        self.assertIn("status", data)
+        self.assertEqual(data["status"], "OK")
+
     def test_index(self):
         """It should return service metadata at the root URL"""
         resp = self.client.get("/")
@@ -351,7 +360,9 @@ class TestYourResourceService(TestCase):
         response = self.client.get(f"{BASE_URL}?created_after={cutoff}")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.get_json()
-        self.assertTrue(any(entry["customer_id"] == newer.customer_id for entry in data))
+        self.assertTrue(
+            any(entry["customer_id"] == newer.customer_id for entry in data)
+        )
         self.assertFalse(
             any(entry["customer_id"] == older.customer_id for entry in data)
         )
@@ -404,8 +415,12 @@ class TestYourResourceService(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.get_json()
         self.assertTrue(all(cart["status"] == "locked" for cart in data))
-        self.assertTrue(any(cart["customer_id"] == locked_cart.customer_id for cart in data))
-        self.assertFalse(any(cart["customer_id"] == active_cart.customer_id for cart in data))
+        self.assertTrue(
+            any(cart["customer_id"] == locked_cart.customer_id for cart in data)
+        )
+        self.assertFalse(
+            any(cart["customer_id"] == active_cart.customer_id for cart in data)
+        )
 
     def test_list_shopcarts_filter_by_friendly_status(self):
         """It should accept human-friendly status values like OPEN/PURCHASED"""
@@ -415,9 +430,7 @@ class TestYourResourceService(TestCase):
         response = self.client.get(f"{BASE_URL}?status=OPEN")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.get_json()
-        self.assertTrue(
-            all(entry["status"] == "active" for entry in data)
-        )
+        self.assertTrue(all(entry["status"] == "active" for entry in data))
         self.assertTrue(
             any(entry["customer_id"] == open_cart["customer_id"] for entry in data)
         )
@@ -425,9 +438,7 @@ class TestYourResourceService(TestCase):
         response = self.client.get(f"{BASE_URL}?status=PURCHASED")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.get_json()
-        self.assertTrue(
-            all(entry["status"] == "locked" for entry in data)
-        )
+        self.assertTrue(all(entry["status"] == "locked" for entry in data))
         self.assertTrue(
             any(entry["customer_id"] == locked_cart["customer_id"] for entry in data)
         )
@@ -492,11 +503,20 @@ class TestYourResourceService(TestCase):
         )
         response = self.client.get(f"{BASE_URL}?total_price_lt=40")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertTrue(all(entry["customer_id"] == low.customer_id for entry in response.get_json()))
+        self.assertTrue(
+            all(
+                entry["customer_id"] == low.customer_id for entry in response.get_json()
+            )
+        )
 
         response = self.client.get(f"{BASE_URL}?total_price_gt=120")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertTrue(all(entry["customer_id"] == high.customer_id for entry in response.get_json()))
+        self.assertTrue(
+            all(
+                entry["customer_id"] == high.customer_id
+                for entry in response.get_json()
+            )
+        )
 
         response = self.client.get(f"{BASE_URL}?total_price_gt=50&total_price_lt=200")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -567,7 +587,9 @@ class TestYourResourceService(TestCase):
         self._create_shopcart_for_customer(2003, "active")
         response = self.client.get(f"{BASE_URL}?status=")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("status must be a non-empty value", response.get_json()["message"])
+        self.assertIn(
+            "status must be a non-empty value", response.get_json()["message"]
+        )
 
     def test_list_shopcarts_blank_total_price_lt_rejected(self):
         """It should reject blank total_price_lt filters"""
@@ -1440,9 +1462,7 @@ class TestYourResourceService(TestCase):
     def test_list_items_filter_by_description(self):
         """It should filter items by description substring"""
         cart = self._setup_cart_with_basic_items()
-        resp = self.client.get(
-            f"{BASE_URL}/{cart.customer_id}/items?description=eco"
-        )
+        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items?description=eco")
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         data = resp.get_json()
         self.assertEqual(len(data), 1)
@@ -1514,9 +1534,7 @@ class TestYourResourceService(TestCase):
     def test_list_items_filter_invalid_min_price(self):
         """It should reject invalid min_price values"""
         cart = self._setup_cart_with_basic_items()
-        resp = self.client.get(
-            f"{BASE_URL}/{cart.customer_id}/items?min_price=abc"
-        )
+        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items?min_price=abc")
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
         data = resp.get_json()
         self.assertIn("min_price must be a number", data["message"])
@@ -1535,9 +1553,7 @@ class TestYourResourceService(TestCase):
         resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items?color=red")
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
         data = resp.get_json()
-        self.assertEqual(
-            data["message"], "color is not a supported filter parameter"
-        )
+        self.assertEqual(data["message"], "color is not a supported filter parameter")
 
     def test_list_items_filter_ordering_validation(self):
         """It should validate min_price is not greater than max_price"""
@@ -1547,7 +1563,9 @@ class TestYourResourceService(TestCase):
         )
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
         data = resp.get_json()
-        self.assertIn("min_price must be less than or equal to max_price", data["message"])
+        self.assertIn(
+            "min_price must be less than or equal to max_price", data["message"]
+        )
 
     def test_list_items_filter_empty_result(self):
         """It should return an empty list when no results match"""
@@ -1564,7 +1582,9 @@ class TestYourResourceService(TestCase):
         cart = self._setup_cart_with_basic_items()
         resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items?description= ")
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("description must be a non-empty string", resp.get_json()["message"])
+        self.assertIn(
+            "description must be a non-empty string", resp.get_json()["message"]
+        )
 
     def test_list_items_filter_blank_min_price_rejected(self):
         """It should reject blank numeric price filters"""

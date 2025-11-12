@@ -494,6 +494,32 @@ td.empty {
   color: #6d28d9;
 }
 
+.list-filter {
+  margin: 1rem 0 1.5rem;
+  padding: 1rem;
+  background: var(--surface-muted);
+  border-radius: 0.85rem;
+  border: 1px solid var(--border);
+}
+
+.filter-form {
+  display: flex;
+  gap: 0.8rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.filter-form label {
+  flex: 1;
+  min-width: 150px;
+}
+
+.filter-btn {
+  padding: 0.55rem 1.2rem;
+  font-size: 0.95rem;
+  white-space: nowrap;
+}
+
 footer {
   text-align: center;
   padding: 2.5rem 1rem 3rem;

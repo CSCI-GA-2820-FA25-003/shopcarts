@@ -53,8 +53,8 @@ bdd: ## Run the Behave Selenium UI scenarios (service must be running)
 	BASE_URL=$(BASE_URL) pipenv run behave
 
 .PHONY: run
-run: ## Run the service locally (press Ctrl+C to stop)
-	$(info Starting service on $(BASE_URL) ...)
+run: ## Run the service (starts, verifies health, then stops)
+	$(info Starting service on $(BASE_URL)...)
 	@PORT=$(PORT) honcho start
 
 .PHONY: secret

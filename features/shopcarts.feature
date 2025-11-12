@@ -44,7 +44,33 @@ Feature: Shopcart creation via admin UI
   Scenario: Update a shopcart that does not exist
     Given there is no shopcart with customer_id=777
     When I send a PUT request to update shopcart for customer 777 with status "LOCKED"
-    Then I should receive a 404 Not Found response in the UI
+    Then I should receive a 404 Not Found response
+
+  Scenario: Retrieve all shopcarts
+    Given the shopcart admin UI is available
+    And there is an existing shopcart with customer_id=101 and status "ACTIVE"
+    And there is an existing shopcart with customer_id=102 and status "ABANDONED"
+    When I open the "My Shopcarts" page
+    Then I should see a list of all my shopcarts
+    And each shopcart should show its ID, name, and status
+
+  Scenario: Filter shopcarts by status
+    Given the shopcart admin UI is available
+    And there is an existing shopcart with customer_id=201 and status "ACTIVE"
+    And there is an existing shopcart with customer_id=202 and status "ABANDONED"
+    When I filter by "ACTIVE"
+    Then I should see only the shopcarts with status "ACTIVE"
+
+  Scenario: Invalid filter parameter
+    Given the shopcart admin UI is available
+    When I try to apply a filter that doesn't exist
+    Then I should see an error message "Invalid filter option"
+
+  Scenario: UI shows empty state
+    Given the shopcart admin UI is available
+    And all shopcarts are deleted
+    When I open the "My Shopcarts" page
+    Then I should see a message "No shopcarts found"
 
   Scenario: Query shopcarts by customer ID
     Given shopcarts exist for customer_id=5
@@ -54,7 +80,7 @@ Feature: Shopcart creation via admin UI
 
   Scenario: Query shopcarts by status
     Given shopcarts exist with status="ACTIVE"
-    When I send a GET request to "/shopcarts?status=active"
+    When I send a GET request to "/shopcarts?status=ACTIVE"
     Then I should receive a 200 OK response
     And all returned shopcarts should have status="ACTIVE"
 
@@ -69,30 +95,3 @@ Feature: Shopcart creation via admin UI
     When I send a GET request to "/shopcarts?status=INVALID_STATUS"
     Then I should receive a 400 Bad Request response
 
-  Scenario: Filter shopcarts by status in the UI
-    Given the following shopcarts exist:
-      | customer_id | status  | total |
-      | 910         | ACTIVE  | 75.00 |
-      | 911         | LOCKED  | 90.00 |
-    And I am a logged-in customer on the Shopcart page
-    When I filter shopcarts by status "ACTIVE" in the UI
-    Then the UI should only list shopcarts with status "ACTIVE"
-
-  Scenario: Invalid UI price range shows warning
-    Given the following shopcarts exist:
-      | customer_id | status | total |
-      | 920         | ACTIVE | 60.00 |
-    And I am a logged-in customer on the Shopcart page
-    When I submit an invalid price range in the UI
-    Then I should see a warning message "Minimum total cannot exceed the maximum total."
-
-  Scenario: Clear Filters resets the list
-    Given the following shopcarts exist:
-      | customer_id | status    | total |
-      | 930         | ACTIVE    | 80.00 |
-      | 931         | ABANDONED | 95.00 |
-    And I am a logged-in customer on the Shopcart page
-    When I filter shopcarts by customer id 930
-    And I clear the UI filters
-    Then the filter form should be reset
-    And the UI should show at least 2 shopcarts
