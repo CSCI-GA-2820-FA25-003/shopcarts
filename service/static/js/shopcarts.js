@@ -47,10 +47,10 @@ const normalizeStatus = (value) =>
   (value ?? "active").toString().trim().toLowerCase() || "active";
 
 const STATUS_DISPLAY = {
-  active: "OPEN",
+  active: "ACTIVE",
   abandoned: "ABANDONED",
-  locked: "PURCHASED",
-  expired: "MERGED",
+  locked: "LOCKED",
+  expired: "EXPIRED",
 };
 
 const formatStatusLabel = (value) =>

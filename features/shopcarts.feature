@@ -10,7 +10,7 @@ Feature: Shopcart creation via admin UI
     Given I am a logged-in customer on the Shopcart page
     When I submit a valid "Create Cart" form with customer_id=101 and name="My Summer Cart"
     Then I should receive a confirmation message "Shopcart created successfully"
-    And I should see the new cart listed with status "OPEN"
+    And I should see the new cart listed with status "ACTIVE"
 
   Scenario: Invalid request body
     Given I am on the Create Shopcart form
@@ -35,7 +35,7 @@ Feature: Shopcart creation via admin UI
     Then I should see an error message "Cart not found"
 
   Scenario: Update an existing shopcart successfully
-    Given there is an existing shopcart with customer_id=2 and status "OPEN"
+    Given there is an existing shopcart with customer_id=2 and status "ACTIVE"
     When I send a PUT request to update shopcart for customer 2 with status "LOCKED"
     Then I should receive a 200 OK response in the UI
     And the response body should include the updated status "LOCKED"
@@ -53,10 +53,10 @@ Feature: Shopcart creation via admin UI
     And all returned shopcarts should have customer_id=5
 
   Scenario: Query shopcarts by status
-    Given shopcarts exist with status="OPEN"
-    When I send a GET request to "/shopcarts?status=OPEN"
+    Given shopcarts exist with status="ACTIVE"
+    When I send a GET request to "/shopcarts?status=active"
     Then I should receive a 200 OK response
-    And all returned shopcarts should have status="OPEN"
+    And all returned shopcarts should have status="ACTIVE"
 
   Scenario: Query shopcarts by price range
     Given shopcarts exist with various total prices
@@ -71,17 +71,17 @@ Feature: Shopcart creation via admin UI
 
   Scenario: Filter shopcarts by status in the UI
     Given the following shopcarts exist:
-      | customer_id | status    | total |
-      | 910         | OPEN      | 75.00 |
-      | 911         | PURCHASED | 90.00 |
+      | customer_id | status  | total |
+      | 910         | ACTIVE  | 75.00 |
+      | 911         | LOCKED  | 90.00 |
     And I am a logged-in customer on the Shopcart page
-    When I filter shopcarts by status "OPEN" in the UI
-    Then the UI should only list shopcarts with status "OPEN"
+    When I filter shopcarts by status "ACTIVE" in the UI
+    Then the UI should only list shopcarts with status "ACTIVE"
 
   Scenario: Invalid UI price range shows warning
     Given the following shopcarts exist:
       | customer_id | status | total |
-      | 920         | OPEN   | 60.00 |
+      | 920         | ACTIVE | 60.00 |
     And I am a logged-in customer on the Shopcart page
     When I submit an invalid price range in the UI
     Then I should see a warning message "Minimum total cannot exceed the maximum total."
@@ -89,7 +89,7 @@ Feature: Shopcart creation via admin UI
   Scenario: Clear Filters resets the list
     Given the following shopcarts exist:
       | customer_id | status    | total |
-      | 930         | OPEN      | 80.00 |
+      | 930         | ACTIVE    | 80.00 |
       | 931         | ABANDONED | 95.00 |
     And I am a logged-in customer on the Shopcart page
     When I filter shopcarts by customer id 930

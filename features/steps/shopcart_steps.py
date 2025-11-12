@@ -37,14 +37,8 @@ def canonical_status(label: str) -> str:
 
 
 def status_display_label(label: str) -> str:
-    display_map = {
-        "active": "OPEN",
-        "abandoned": "ABANDONED",
-        "locked": "PURCHASED",
-        "expired": "MERGED",
-    }
     canonical = canonical_status(label)
-    return display_map.get(canonical, canonical.upper())
+    return canonical.upper()
 
 
 def add_item_via_api(context, customer_id: int, price: Decimal, product_id: int) -> None:
@@ -351,7 +345,7 @@ def step_impl_ui_customer_results(context, customer_id):
 def step_impl_filter_by_status_ui(context, status_label):
     form = query_form(context)
     dropdown = Select(form.find_element(By.NAME, "status"))
-    dropdown.select_by_value(status_label.strip().upper())
+    dropdown.select_by_value(canonical_status(status_label))
     submit_query_form(context)
     wait_for_alert_text(context, "Query completed")
     capture_latest_rows(context)
@@ -359,7 +353,7 @@ def step_impl_filter_by_status_ui(context, status_label):
 
 @then('the UI should only list shopcarts with status "{status_label}"')
 def step_impl_ui_status_results(context, status_label):
-    expected = status_label.strip().upper()
+    expected = status_display_label(status_label)
     rows = getattr(context, "latest_rows", None) or get_table_rows(context)
     assert rows, "No rows returned in UI"
     assert all(row["status_label"] == expected for row in rows)
@@ -504,11 +498,9 @@ def step_impl_update_shopcart(context, customer_id, status):
     customer_input.clear()
     customer_input.send_keys(str(customer_id))
 
-    # Map status values - "OPEN" to "active", "LOCKED" to "locked", etc.
-    status_value = "active" if status.upper() == "OPEN" else status.lower()
-    from selenium.webdriver.support.ui import Select
+    # Map aliases (e.g., "OPEN") into canonical values expected by the dropdown.
     select = Select(status_select)
-    select.select_by_value(status_value)
+    select.select_by_value(canonical_status(status))
 
     submit_button.click()
 
