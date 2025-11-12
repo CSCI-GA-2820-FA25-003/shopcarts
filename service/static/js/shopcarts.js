@@ -10,7 +10,7 @@ const actionEndpoints = {
 const alertsRegion = document.querySelector("#alerts");
 const resultCard = document.querySelector("#result-card");
 const tableBody = document.querySelector("#shopcart-table tbody");
-const listAllBtn = document.querySelector("#list-all");
+const clearFiltersBtn = document.querySelector("#clear-filters");
 const queryForm = document.querySelector("#query-form");
 const listFilterForm = document.querySelector("#list-filter");
 const listResetFilterBtn = document.querySelector("#list-reset-filter");
@@ -48,13 +48,16 @@ const clearAlert = () => {
 const normalizeStatus = (value) =>
   (value ?? "active").toString().trim().toLowerCase() || "active";
 
-const formatStatusLabel = (value) => {
-  const normalized = normalizeStatus(value);
-  if (normalized === "active") {
-    return "OPEN";
-  }
-  return normalized.toUpperCase();
+const STATUS_DISPLAY = {
+  active: "ACTIVE",
+  abandoned: "ABANDONED",
+  locked: "LOCKED",
+  expired: "EXPIRED",
 };
+
+const formatStatusLabel = (value) =>
+  STATUS_DISPLAY[normalizeStatus(value)] ||
+  normalizeStatus(value).toUpperCase();
 
 const normalizeCart = (raw = {}) => {
   if (!raw || typeof raw !== "object") return null;
@@ -394,10 +397,10 @@ const handleQuery = async (event) => {
   showAlert("Query completed", "info");
 };
 
-const handleListAll = async () => {
+const handleClearFilters = async () => {
   queryForm.reset();
   await refreshList();
-  showAlert("Listing all shopcarts", "info");
+  showAlert("Filters cleared. Showing all shopcarts.", "info");
 };
 
 const handleListFilter = async (event) => {
@@ -430,7 +433,9 @@ forms.read.addEventListener("submit", handleRead);
 forms.delete.addEventListener("submit", handleDelete);
 forms.action.addEventListener("submit", handleAction);
 queryForm.addEventListener("submit", handleQuery);
-listAllBtn.addEventListener("click", handleListAll);
+if (clearFiltersBtn) {
+  clearFiltersBtn.addEventListener("click", handleClearFilters);
+}
 
 if (listFilterForm) {
   listFilterForm.addEventListener("submit", handleListFilter);

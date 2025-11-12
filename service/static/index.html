@@ -228,6 +228,16 @@
               Customer ID (optional)
               <input type="number" name="customerId" min="1" />
             </label>
+              <label>
+                Status
+                <select name="status">
+                  <option value="">Any</option>
+                  <option value="active">active</option>
+                  <option value="abandoned">abandoned</option>
+                  <option value="locked">locked</option>
+                  <option value="expired">expired</option>
+                </select>
+              </label>
             <label>
               Status
               <select name="status" id="status-filter">
@@ -245,13 +255,13 @@
               <input type="number" step="0.01" min="0" name="totalPriceGt" />
             </label>
             <label>
-              Total Price ≤
-              <input type="number" step="0.01" min="0" name="totalPriceLt" />
+              Max Total
+              <input type="number" step="0.01" min="0" name="maxTotal" />
             </label>
             <div class="button-row">
               <button type="submit">Filter</button>
-              <button type="button" class="secondary" id="list-all">
-                List All
+              <button type="button" class="secondary" id="clear-filters">
+                Clear Filters
               </button>
             </div>
           </form>

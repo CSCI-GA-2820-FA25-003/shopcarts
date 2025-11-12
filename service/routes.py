@@ -103,6 +103,17 @@ def _compute_cart_total(cart: Shopcart) -> Decimal:
     return total
 
 
+STATUS_ALIAS_MAP = {
+    "open": "active",
+    "active": "active",
+    "abandoned": "abandoned",
+    "purchased": "locked",
+    "locked": "locked",
+    "merged": "expired",
+    "expired": "expired",
+}
+
+
 @dataclass
 class CartFilters:
     """Container for list endpoint filters."""
@@ -111,8 +122,8 @@ class CartFilters:
     customer_id: int | None = None
     created_before: datetime | None = None
     created_after: datetime | None = None
-    total_price_lt: Decimal | None = None
-    total_price_gt: Decimal | None = None
+    max_total: Decimal | None = None
+    min_total: Decimal | None = None
 
 
 def _parse_status_filter(value) -> str | None:
@@ -176,20 +187,32 @@ def _parse_list_filters(args) -> CartFilters:
     filters.created_after = _parse_optional_datetime(
         args.get("created_after"), "created_after"
     )
-    total_price_lt_raw = args.get("total_price_lt")
-    if total_price_lt_raw is not None:
-        filters.total_price_lt = _parse_decimal(total_price_lt_raw, "total_price_lt")
-    total_price_gt_raw = args.get("total_price_gt")
-    if total_price_gt_raw is not None:
-        filters.total_price_gt = _parse_decimal(total_price_gt_raw, "total_price_gt")
+    max_total_raw = args.get("max_total")
+    max_field = "max_total"
+    if max_total_raw is None:
+        max_total_raw = args.get("total_price_lt")
+        if max_total_raw is not None:
+            max_field = "total_price_lt"
+    if max_total_raw is not None:
+        filters.max_total = _parse_decimal(max_total_raw, max_field)
+
+    min_total_raw = args.get("min_total")
+    min_field = "min_total"
+    if min_total_raw is None:
+        min_total_raw = args.get("total_price_gt")
+        if min_total_raw is not None:
+            min_field = "total_price_gt"
+    if min_total_raw is not None:
+        filters.min_total = _parse_decimal(min_total_raw, min_field)
+
     if (
-        filters.total_price_lt is not None
-        and filters.total_price_gt is not None
-        and filters.total_price_lt < filters.total_price_gt
+        filters.max_total is not None
+        and filters.min_total is not None
+        and filters.max_total < filters.min_total
     ):
         abort(
             status.HTTP_400_BAD_REQUEST,
-            "total_price_lt must be greater than or equal to total_price_gt.",
+            "max_total must be greater than or equal to min_total.",
         )
     return filters
 
@@ -585,14 +608,14 @@ def list_shopcarts():
         (
             "Request to list shopcarts filters="
             "status=%s customer_id=%s created_before=%s created_after=%s "
-            "total_price_lt=%s total_price_gt=%s"
+            "max_total=%s min_total=%s"
         ),
         filters.status,
         filters.customer_id,
         filters.created_before,
         filters.created_after,
-        filters.total_price_lt,
-        filters.total_price_gt,
+        filters.max_total,
+        filters.min_total,
     )
 
     query = Shopcart.query
@@ -610,7 +633,7 @@ def list_shopcarts():
             [
                 cart.serialize()
                 for cart in _filter_by_total_price(
-                    query.all(), filters.total_price_gt, filters.total_price_lt
+                    query.all(), filters.min_total, filters.max_total
                 )
             ]
         ),
