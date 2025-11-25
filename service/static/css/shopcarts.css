@@ -372,6 +372,24 @@ button.secondary {
   box-shadow: none;
 }
 
+.view-cart-btn {
+  padding: 0.4rem 0.9rem;
+  font-size: 0.85rem;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 120ms ease, transform 120ms ease;
+  font-weight: 500;
+}
+
+.view-cart-btn:hover,
+.view-cart-btn:focus-visible {
+  background: var(--accent-strong);
+  transform: translateY(-1px);
+}
+
 .destructive button {
   background: var(--danger);
   box-shadow: 0 10px 25px rgba(220, 38, 38, 0.25);
