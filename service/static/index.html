@@ -13,10 +13,10 @@
         Shopcart Admin
       </div>
       <div class="nav-links">
+        <a href="#panel-results">My Shopcarts</a>
         <a href="#panel-create">Create</a>
         <a href="#panel-query">Query</a>
         <a href="#panel-actions">Action</a>
-        <a href="#panel-results">Results</a>
         <a href="/shopcarts" target="_blank" rel="noreferrer">API JSON ↗</a>
       </div>
     </nav>
@@ -59,13 +59,58 @@
           <p>Use these chips to jump to each section instantly.</p>
         </div>
         <div class="chip-row">
+          <a class="chip" href="#panel-results">My Shopcarts</a>
           <a class="chip" href="#create-form">Create</a>
           <a class="chip" href="#update-form">Update</a>
           <a class="chip" href="#read-form">Read</a>
           <a class="chip" href="#query-form">Query/List</a>
           <a class="chip" href="#delete-form">Delete</a>
           <a class="chip" href="#action-form">Action</a>
-          <a class="chip" href="#panel-results">Results</a>
+        </div>
+      </section>
+
+      <section id="panel-results" class="panel panel--results" data-label="My Shopcarts">
+        <div class="panel-heading">
+          <div>
+            <h2>My Shopcarts</h2>
+            <p>View all your shopcarts and filter by status.</p>
+          </div>
+        </div>
+        <div id="list-filter-form" class="list-filter">
+          <form id="list-filter" class="filter-form">
+            <label>
+              Status Filter
+              <select name="status" id="list-status-filter">
+                <option value="">All Status</option>
+                <option value="active">active</option>
+                <option value="locked">locked</option>
+                <option value="abandoned">abandoned</option>
+                <option value="expired">expired</option>
+              </select>
+            </label>
+            <button type="submit" class="filter-btn">Filter</button>
+            <button type="button" class="filter-btn secondary" id="list-reset-filter">Reset</button>
+          </form>
+        </div>
+        <div id="result-card" class="result-card" hidden></div>
+        <div class="table-wrapper">
+          <table id="shopcart-table">
+            <thead>
+              <tr>
+                <th>Cart ID</th>
+                <th>Name</th>
+                <th>Status</th>
+                <th>Total Items</th>
+                <th>Total Price</th>
+                <th>Updated</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td colspan="6" class="empty">No shopcarts found.</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </section>
 
@@ -192,8 +237,18 @@
                 </select>
               </label>
             <label>
-              Min Total
-              <input type="number" step="0.01" min="0" name="minTotal" />
+              Status
+              <select name="status" id="status-filter">
+                <option value="">Any</option>
+                <option value="active">active</option>
+                <option value="locked">locked</option>
+                <option value="abandoned">abandoned</option>
+                <option value="expired">expired</option>
+              </select>
+            </label>
+            <label>
+              Total Price ≥
+              <input type="number" step="0.01" min="0" name="totalPriceGt" />
             </label>
             <label>
               Max Total

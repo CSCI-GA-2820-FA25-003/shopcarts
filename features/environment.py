@@ -46,7 +46,8 @@ def before_all(context):
     chrome_options.add_argument("--disable-renderer-backgrounding")
     chrome_options.add_argument("--disable-backgrounding-occluded-windows")
     chrome_options.add_argument("--disable-ipc-flooding-protection")
-    chrome_options.add_argument("--remote-debugging-port=9222")
+    # Remote debugging port (optional, only needed for debugging)
+    # chrome_options.add_argument("--remote-debugging-port=9222")
 
     # Try to find or install chromedriver
     # For ARM64, we MUST use system chromedriver, not webdriver-manager
@@ -172,6 +173,20 @@ def _first_existing(*paths: str) -> str | None:
         if path and os.path.exists(path):
             return path
     return None
+
+
+def delete_all_carts_via_api(context):
+    """Delete all shopcarts via the REST API for test cleanup."""
+    try:
+        response = requests.get(_api_url(context, "shopcarts"), timeout=10)
+        if response.status_code == 200:
+            carts = response.json()
+            for cart in carts:
+                customer_id = cart.get("customer_id") or cart.get("customerId")
+                if customer_id:
+                    delete_cart_via_api(context, customer_id)
+    except requests.RequestException:
+        pass  # Ignore errors during cleanup
 
 
 def _api_url(context, path: str) -> str:

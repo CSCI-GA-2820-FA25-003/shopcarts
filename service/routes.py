@@ -104,12 +104,13 @@ def _compute_cart_total(cart: Shopcart) -> Decimal:
 
 
 STATUS_ALIAS_MAP = {
-    "open": "active",
+    "open": "active",  # OPEN maps to active (for backward compatibility)
     "active": "active",
+    "closed": "abandoned",  # CLOSED maps to abandoned (for backward compatibility)
     "abandoned": "abandoned",
-    "purchased": "locked",
+    "purchased": "locked",  # PURCHASED maps to locked
     "locked": "locked",
-    "merged": "expired",
+    "merged": "expired",  # MERGED maps to expired
     "expired": "expired",
 }
 
@@ -130,21 +131,31 @@ def _parse_status_filter(value) -> str | None:
     """Normalize and validate a status filter."""
     if value is None:
         return None
-    normalized = str(value).strip().lower()
+    normalized = str(value).strip().upper()
     if not normalized:
         abort(
             status.HTTP_400_BAD_REQUEST,
             "status must be a non-empty value when provided.",
         )
+    # Map customer-friendly status names to internal statuses using STATUS_ALIAS_MAP
+    normalized_lower = normalized.lower()
+    if normalized_lower in STATUS_ALIAS_MAP:
+        return STATUS_ALIAS_MAP[normalized_lower]
+    # If not in STATUS_ALIAS_MAP, check against allowed statuses
+    # Note: All allowed_statuses are in STATUS_ALIAS_MAP, so this branch
+    # will only execute for invalid status values
     allowed_statuses = Shopcart.allowed_statuses()
-    mapped = STATUS_ALIAS_MAP.get(normalized, normalized)
-    if mapped not in allowed_statuses:
-        readable_statuses = ", ".join(sorted(allowed_statuses))
-        abort(
-            status.HTTP_400_BAD_REQUEST,
-            f"Invalid status '{value}'. Allowed values: {readable_statuses}.",
-        )
-    return mapped
+    # Build friendly status names for error message
+    friendly_names = {"OPEN", "CLOSED", "PURCHASED", "MERGED"}
+    # Combine and sort all valid status values (canonical + friendly)
+    all_valid_statuses = sorted(
+        allowed_statuses | {s.upper() for s in allowed_statuses} | friendly_names
+    )
+    readable_statuses = ", ".join(all_valid_statuses)
+    abort(
+        status.HTTP_400_BAD_REQUEST,
+        f"Invalid status '{value}'. Allowed values: {readable_statuses}.",
+    )
 
 
 def _parse_customer_id_filter(value) -> int | None:
