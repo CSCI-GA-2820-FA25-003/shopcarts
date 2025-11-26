@@ -21,8 +21,12 @@ spec:
     default: master
   - name: image-name
     type: string
-    description: Destination image URL for deployment.
+    description: Destination image URL for build/push/deployment.
     default: image-registry.openshift-image-registry.svc:5000/shopcarts/shopcarts:latest
+  - name: enforce-push
+    type: string
+    description: Set to "true" to fail the build step if push is skipped or fails.
+    default: "true"
   - name: manifest-dir
     type: string
     description: Directory containing Kubernetes manifests.
@@ -106,12 +110,33 @@ spec:
     - name: source
       workspace: pipeline-workspace
 
-  - name: deploy-image
+  - name: build-image
     runAfter:
-    - pytest
     - flake8-lint
     - pylint
+    - pytest
     - unit-test
+    taskRef:
+      kind: Task
+      name: build-image
+    params:
+    - name: IMAGE
+      value: $(params.image-name)
+    - name: DOCKERFILE
+      value: ./Dockerfile
+    - name: CONTEXT
+      value: .
+    - name: TLSVERIFY
+      value: "false"
+    - name: enforce-push
+      value: $(params.enforce-push)
+    workspaces:
+    - name: source
+      workspace: pipeline-workspace
+
+  - name: deploy-image
+    runAfter:
+    - build-image
     taskRef:
       name: deploy-image
     params:
