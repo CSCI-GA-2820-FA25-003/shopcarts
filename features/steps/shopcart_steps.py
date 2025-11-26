@@ -648,8 +648,6 @@ def step_impl_update_shopcart(context, customer_id, status):
     customer_input.clear()
     customer_input.send_keys(str(customer_id))
 
-    # Map status values - "OPEN" to "active", "LOCKED" to "locked", etc.
-    status_value = "active" if status.upper() == "OPEN" else status.lower()
     # Map status values using canonical_status
     from selenium.webdriver.support.ui import Select
 
@@ -688,6 +686,7 @@ def step_impl_200_ok(context):
     ), f"Expected success message, got: {alert_text}"
     # Note: refreshList() clears alerts on success, so we check for either
     # alert (before it's cleared) or result card update (after refreshList)
+
     def update_successful(driver):
         try:
             # Check if alert contains success message
@@ -761,8 +760,6 @@ def step_impl_response_has_status(context, status):
     expected_display = status_display_label(status)
     result_text = result_card.text
     assert (
-        status_display in result_text or status.lower() in result_text.lower()
-    ), f"Expected status '{status}' in result card, got: {result_text}"
         expected_display in result_text or status.lower() in result_text.lower()
     ), f"Expected status '{expected_display}' in result card, got: {result_text}"
 
@@ -897,6 +894,8 @@ def step_impl_card_shows_status(context):
     # According to JS code, status is displayed in badge element
     badge = result_card.find_element(By.CSS_SELECTOR, ".badge")
     assert badge.text.strip(), "Status badge should have text"
+
+
 @when('I open the "My Shopcarts" page')
 def step_impl_open_my_shopcarts(context):
     """Navigate to the My Shopcarts page and load all shopcarts."""
