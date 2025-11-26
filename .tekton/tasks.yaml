@@ -12,6 +12,7 @@ spec:
   - name: URL
     description: Git repository URL to clone.
     type: string
+    default: https://github.com/CSCI-GA-2820-FA25-003/shopcarts
   - name: REVISION
     description: Branch, tag, or commit to checkout.
     type: string
