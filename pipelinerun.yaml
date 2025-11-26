@@ -10,7 +10,7 @@ spec:
     - name: git-repo
       value: https://github.com/CSCI-GA-2820-FA25-003/shopcarts
     - name: git-ref
-      value: feature/unit-test-task
+      value: feature/lint-task
     - name: image-name
       value: image-registry.openshift-image-registry.svc:5000/shopcarts/shopcarts:latest
     - name: manifest-dir
