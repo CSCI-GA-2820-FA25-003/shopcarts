@@ -97,11 +97,21 @@ spec:
     - name: source
       workspace: pipeline-workspace
 
+  - name: unit-test
+    runAfter:
+    - git-clone
+    taskRef:
+      name: unit-test
+    workspaces:
+    - name: source
+      workspace: pipeline-workspace
+
   - name: deploy-image
     runAfter:
     - pytest
     - flake8-lint
     - pylint
+    - unit-test
     taskRef:
       name: deploy-image
     params:

@@ -58,7 +58,69 @@ spec:
 
       if [ "$(params.SUBMODULES)" = "true" ]; then
         echo "Updating submodules"
-        git submodule update --init --recursive
+      git submodule update --init --recursive
+      fi
+
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: unit-test
+  namespace: shopcarts
+  labels:
+    app.kubernetes.io/name: shopcarts
+    app.kubernetes.io/component: tekton-task
+spec:
+  description: Run the unit test suite using pytest (or specified command) after installing dependencies.
+  workspaces:
+  - name: source
+    description: Workspace with the checked-out source code.
+  params:
+  - name: image
+    description: Python image to run tests.
+    type: string
+    default: python:3.11-slim
+  - name: test-command
+    description: Command to execute tests.
+    type: string
+    default: pytest
+  - name: args
+    description: Extra arguments to pass to the test command (space-separated string).
+    type: string
+    default: ""
+  steps:
+  - name: unit-tests
+    image: $(params.image)
+    workingDir: $(workspaces.source.path)
+    script: |
+      #!/bin/bash
+      set -e
+      export PATH="$PATH:$HOME/.local/bin"
+      # Default to in-memory SQLite if DATABASE_URI is not provided to avoid external DB dependency.
+      : "${DATABASE_URI:=sqlite:///:memory:}"
+      export DATABASE_URI
+
+      echo "***** Installing dependencies *****"
+      if [ -e "poetry.lock" ]; then
+        echo "Found poetry.lock; using poetry"
+        python -m pip install --upgrade pip poetry
+        poetry config virtualenvs.create false
+        poetry install
+      elif [ -e "Pipfile" ]; then
+        echo "Found Pipfile; using pipenv"
+        python -m pip install --upgrade pip pipenv
+        pipenv install --system --dev
+      elif [ -e "requirements.txt" ]; then
+        python -m pip install --upgrade pip
+        python -m pip install --user -r requirements.txt
+      fi
+
+      echo "***** Running unit tests *****"
+      EXTRA_ARGS="$(params.args)"
+      if [ -n "${EXTRA_ARGS}" ]; then
+        $(params.test-command) ${EXTRA_ARGS}
+      else
+        $(params.test-command)
       fi
 
 ---
