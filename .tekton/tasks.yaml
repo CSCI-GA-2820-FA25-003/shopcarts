@@ -1,0 +1,365 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: git-clone
+  namespace: shopcarts
+  labels:
+    app.kubernetes.io/name: shopcarts
+    app.kubernetes.io/component: tekton-task
+spec:
+  description: Clone a Git repository into the shared workspace (lightweight replacement for the ClusterTask).
+  params:
+  - name: URL
+    description: Git repository URL to clone.
+    type: string
+  - name: REVISION
+    description: Branch, tag, or commit to checkout.
+    type: string
+    default: master
+  - name: DEPTH
+    description: Shallow clone depth.
+    type: string
+    default: "1"
+  - name: SUBMODULES
+    description: Whether to init submodules.
+    type: string
+    default: "true"
+  - name: DELETE_EXISTING
+    description: Whether to wipe the target dir before cloning.
+    type: string
+    default: "true"
+  workspaces:
+  - name: output
+    description: Workspace to place the cloned repo.
+  steps:
+  - name: clone
+    image: alpine/git:2.45.2
+    workingDir: $(workspaces.output.path)
+    script: |
+      #!/bin/sh
+      set -e
+
+      TARGET_DIR="$(workspaces.output.path)"
+      echo "Cloning into ${TARGET_DIR}"
+
+      if [ "$(params.DELETE_EXISTING)" = "true" ] && [ -d "${TARGET_DIR}" ]; then
+        echo "Cleaning existing workspace contents"
+        find "${TARGET_DIR}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+      fi
+
+      git init "${TARGET_DIR}"
+      cd "${TARGET_DIR}"
+      git remote add origin "$(params.URL)"
+
+      # Fetch and checkout
+      git fetch --depth="$(params.DEPTH)" origin "$(params.REVISION)"
+      git checkout FETCH_HEAD
+
+      if [ "$(params.SUBMODULES)" = "true" ]; then
+        echo "Updating submodules"
+        git submodule update --init --recursive
+      fi
+
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: pylint
+  namespace: shopcarts
+  labels:
+    app.kubernetes.io/name: shopcarts
+    app.kubernetes.io/component: tekton-task
+spec:
+  description: Run pylint on the source tree, installing dependencies based on Poetry/Pipenv/requirements.txt.
+  workspaces:
+  - name: source
+    description: Workspace with the checked-out source code.
+  params:
+  - name: image
+    description: Container image containing Python and pylint.
+    type: string
+    default: quay.io/rofrano/python:3.11-slim
+  - name: fail-on-error
+    description: "Set to true to make pylint failures fail the task."
+    type: string
+    default: "false"
+  - name: path
+    description: Path to the module/package to lint.
+    type: string
+    default: "."
+  - name: args
+    description: Extra arguments to pass to pylint (space-separated string).
+    type: string
+    default: ""
+  - name: requirements-file
+    description: Name of the requirements file if present.
+    type: string
+    default: requirements.txt
+  steps:
+  - name: pylint
+    image: $(params.image)
+    workingDir: $(workspaces.source.path)
+    script: |
+      #!/bin/bash
+      set -e
+      export PATH="$PATH:$HOME/.local/bin"
+
+      echo "***** Installing dependencies *****"
+      if [ -e "poetry.lock" ]; then
+        echo "Found poetry.lock; using poetry"
+        python -m pip install --upgrade pip poetry
+        poetry config virtualenvs.create false
+        poetry install
+      elif [ -e "Pipfile" ]; then
+        echo "Found Pipfile; using pipenv"
+        python -m pip install --upgrade pip pipenv
+        pipenv install --system --dev
+      elif [ -n "$(params.requirements-file)" ] && [ -e "$(params.requirements-file)" ]; then
+        python -m pip install --upgrade pip
+        python -m pip install --user -r "$(params.requirements-file)"
+      fi
+
+      echo "***** Ensuring pylint is available *****"
+      python -m pip install --user pylint
+
+      echo "***** Running pylint *****"
+      EXTRA_ARGS="$(params.args)"
+      if [ "$(params.fail-on-error)" = "true" ]; then
+        if [ -n "${EXTRA_ARGS}" ]; then
+          pylint ${EXTRA_ARGS} "$(params.path)"
+        else
+          pylint "$(params.path)"
+        fi
+      else
+        if [ -n "${EXTRA_ARGS}" ]; then
+          pylint ${EXTRA_ARGS} "$(params.path)" || true
+        else
+          pylint "$(params.path)" || true
+        fi
+      fi
+
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: pytest-env
+  namespace: shopcarts
+  labels:
+    app.kubernetes.io/name: shopcarts
+    app.kubernetes.io/component: tekton-task
+spec:
+  description: Run pytest, installing dependencies via Poetry/Pipenv/requirements.txt and injecting DATABASE_URI from a Secret.
+  workspaces:
+  - name: source
+    description: Workspace with the checked-out source code.
+  params:
+  - name: pytest-args
+    description: Arguments to pass to pytest (space-separated string).
+    type: string
+    default: ""
+  - name: fail-on-error
+    description: "Set to true to fail the task when pytest fails."
+    type: string
+    default: "false"
+  - name: secret-name
+    description: Secret containing a key for DATABASE_URI.
+    type: string
+    default: postgres-creds
+  - name: secret-key
+    description: Key within the Secret that stores the database URI.
+    type: string
+    default: database_uri
+  steps:
+  - name: pytest
+    image: quay.io/rofrano/python:3.11-slim
+    workingDir: $(workspaces.source.path)
+    env:
+    - name: DATABASE_URI
+      valueFrom:
+        secretKeyRef:
+          name: $(params.secret-name)
+          key: $(params.secret-key)
+          optional: true
+    script: |
+      #!/bin/bash
+      set -e
+      export PATH="$PATH:$HOME/.local/bin"
+
+      echo "***** Installing dependencies *****"
+      if [ -e "poetry.lock" ]; then
+        echo "Found poetry.lock; using poetry"
+        python -m pip install --upgrade pip poetry
+        poetry config virtualenvs.create false
+        poetry install
+      elif [ -e "Pipfile" ]; then
+        echo "Found Pipfile; using pipenv"
+        python -m pip install --upgrade pip pipenv
+        pipenv install --system --dev
+      elif [ -e "requirements.txt" ]; then
+        python -m pip install --upgrade pip
+        python -m pip install --user -r requirements.txt
+      fi
+
+      echo "***** Ensuring pytest is available *****"
+      python -m pip install --user pytest
+
+      echo "***** Running Tests *****"
+      ARGS="$(params.pytest-args)"
+      if [ "$(params.fail-on-error)" = "true" ]; then
+        if [ -n "${ARGS}" ]; then
+          pytest ${ARGS}
+        else
+          pytest
+        fi
+      else
+        if [ -n "${ARGS}" ]; then
+          pytest ${ARGS} || true
+        else
+          pytest || true
+        fi
+      fi
+
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: deploy-image
+  namespace: shopcarts
+  labels:
+    app.kubernetes.io/name: shopcarts
+    app.kubernetes.io/component: tekton-task
+spec:
+  description: Update the deployment image and apply manifests with oc.
+  workspaces:
+  - name: source
+    description: Workspace with the checked-out source code.
+  params:
+  - name: image-name
+    description: Fully qualified image name to deploy.
+    type: string
+  - name: manifest-dir
+    description: Directory containing Kubernetes manifests.
+    type: string
+    default: k8s
+  steps:
+  - name: deploy
+    image: bitnami/kubectl:latest
+    workingDir: $(workspaces.source.path)
+    command:
+    - /bin/bash
+    - -c
+    - |
+      #!/bin/bash
+      set -e
+      echo "Applying manifests from $(params.manifest-dir)"
+      echo "Installing yq..."
+      YQ=/tmp/yq
+      curl -sLo "${YQ}" https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+      chmod a+x "${YQ}"
+
+      WORK_DIR=/tmp/k8s-manifests
+      rm -rf "${WORK_DIR}"
+      cp -R "$(params.manifest-dir)" "${WORK_DIR}"
+
+      DEPLOYMENT_FILE="${WORK_DIR}/shopcarts-deployment.yaml"
+      if [ -f "${DEPLOYMENT_FILE}" ]; then
+        echo "Updating image to $(params.image-name) in ${DEPLOYMENT_FILE}"
+        "${YQ}" -e -i '(.kind == "Deployment").spec.template.spec.containers[0].image = "$(params.image-name)"' "${DEPLOYMENT_FILE}"
+      else
+        echo "Deployment file not found at ${DEPLOYMENT_FILE}"
+        exit 1
+      fi
+
+      echo "Applying manifests..."
+      kubectl apply -f "${WORK_DIR}"
+      echo "Deploy complete."
+
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: apply-manifests
+  namespace: shopcarts
+  labels:
+    app.kubernetes.io/name: shopcarts
+    app.kubernetes.io/component: tekton-task
+spec:
+  description: Apply all manifests in the provided directory with oc.
+  workspaces:
+  - name: source
+    description: Workspace with the checked-out source code.
+  params:
+  - name: manifest-dir
+    description: Directory containing Kubernetes manifests.
+    type: string
+    default: k8s
+  steps:
+  - name: apply
+    image: bitnami/kubectl:latest
+    workingDir: $(workspaces.source.path)
+    command:
+    - /bin/bash
+    - -c
+    - |
+      #!/bin/bash
+      set -e
+      echo "Applying manifests in $(params.manifest-dir)"
+      kubectl apply -f "$(params.manifest-dir)"
+      echo "-----------------------------------"
+
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: behave
+  namespace: shopcarts
+  labels:
+    app.kubernetes.io/name: shopcarts
+    app.kubernetes.io/component: tekton-task
+spec:
+  description: Run Behave BDD tests against the deployed application.
+  workspaces:
+  - name: source
+    description: Workspace with the checked-out source code.
+  params:
+  - name: base-url
+    description: Base URL of the application under test.
+    type: string
+  - name: wait-seconds
+    description: Seconds to wait for responses in tests.
+    type: string
+    default: "60"
+  - name: driver
+    description: Web driver to use (chrome or firefox).
+    type: string
+    default: chrome
+  steps:
+  - name: behave
+    image: quay.io/rofrano/pipeline-selenium
+    workingDir: $(workspaces.source.path)
+    env:
+    - name: BASE_URL
+      value: $(params.base-url)
+    - name: WAIT_SECONDS
+      value: $(params.wait-seconds)
+    - name: DRIVER
+      value: $(params.driver)
+    script: |
+      #!/bin/bash
+      set -e
+      export PATH="$PATH:$HOME/.local/bin"
+
+      echo "***** Installing dependencies *****"
+      if [ -e "poetry.lock" ]; then
+        echo "Found poetry.lock; using poetry"
+        python -m pip install poetry poetry-plugin-export
+        poetry export --with=dev -f requirements.txt --output requirements.txt
+      elif [ -e "Pipfile" ]; then
+        echo "Found Pipfile; using pipenv"
+        python -m pip install --upgrade pip pipenv
+        pipenv requirements --dev > requirements.txt
+      fi
+
+      python -m pip install --user -r requirements.txt
+      echo "***** Running Behave *****"
+      behave

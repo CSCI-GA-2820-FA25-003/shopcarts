@@ -1,0 +1,25 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  name: shopcarts-ci-run
+  namespace: shopcarts
+spec:
+  pipelineRef:
+    name: shopcarts-ci
+  params:
+    - name: git-repo
+      value: https://github.com/CSCI-GA-2820-FA25-003/shopcarts
+    - name: git-ref
+      value: master
+    - name: image-name
+      value: image-registry.openshift-image-registry.svc:5000/shopcarts/shopcarts:latest
+    - name: manifest-dir
+      value: k8s
+    - name: run-behave
+      value: "false"   # 想跑 BDD 时改为 "true"
+  workspaces:
+    - name: pipeline-workspace
+      persistentVolumeClaim:
+        claimName: pipeline-pvc
+  taskRunTemplate:
+    serviceAccountName: pipeline
