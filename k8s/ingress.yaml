@@ -3,8 +3,15 @@ kind: Ingress
 metadata:
   name: shopcarts-ingress
   namespace: shopcarts
+  annotations:
+    # Use Traefik as the Ingress Controller (default in K3D)
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+    # Optional: Enable TLS termination (uncomment when cert-manager is available)
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
 spec:
+  ingressClassName: traefik
   rules:
+  # Access via LoadBalancer (K3D maps 8080:80)
   - http:
       paths:
       - path: /
@@ -14,4 +21,20 @@ spec:
             name: shopcarts
             port:
               number: 80
+  # Optional: Access via hostname (uncomment and add to /etc/hosts)
+  # - host: shopcarts.local
+  #   http:
+  #     paths:
+  #     - path: /
+  #       pathType: Prefix
+  #       backend:
+  #         service:
+  #           name: shopcarts
+  #           port:
+  #             number: 80
+  # Optional: TLS configuration (uncomment when certificates are available)
+  # tls:
+  #   - hosts:
+  #       - shopcarts.local
+  #     secretName: shopcarts-tls
 

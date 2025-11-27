@@ -113,9 +113,24 @@ deploy: build ## Deploy the service on local Kubernetes
 	@echo "Deploy complete. Access via http://127.0.0.1:8080"
 
 .PHONY: url
-url: ## Show the ingress URL
-	$(info Getting ingress URL...)
-	@kubectl get ingress -n shopcarts -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}' 2>/dev/null && echo "" || kubectl get ingress -n shopcarts -o jsonpath='{.items[0].spec.rules[0].host}' 2>/dev/null || echo "No ingress found. Run 'make deploy' first."
+url: ## Show the ingress URL for BDD tests
+	$(info Getting Ingress URL...)
+	@echo "Ingress URL for BDD tests (use as BASE_URL):"
+	@INGRESS_IP=$$(kubectl get ingress -n shopcarts shopcarts-ingress -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null); \
+	INGRESS_HOST=$$(kubectl get ingress -n shopcarts shopcarts-ingress -o jsonpath='{.spec.rules[0].host}' 2>/dev/null); \
+	if [ -n "$$INGRESS_IP" ]; then \
+		echo "  http://$$INGRESS_IP"; \
+	elif [ -n "$$INGRESS_HOST" ]; then \
+		echo "  http://$$INGRESS_HOST"; \
+		echo "  (Add to /etc/hosts: 127.0.0.1 $$INGRESS_HOST)"; \
+	else \
+		echo "  $(BASE_URL)  (via K3D LoadBalancer on port $(PORT))"; \
+	fi
+	@echo ""
+	@echo "Access endpoints:"
+	@echo "  - REST API: $(BASE_URL)/shopcarts"
+	@echo "  - Web UI: $(BASE_URL)/static/index.html"
+	@echo "  - Health: $(BASE_URL)/health"
 
 ############################################################
 # COMMANDS FOR BUILDING THE IMAGE

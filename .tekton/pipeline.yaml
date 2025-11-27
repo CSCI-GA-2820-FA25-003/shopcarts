@@ -29,8 +29,8 @@ spec:
     default: k8s
   - name: base-url
     type: string
-    description: Base URL for Behave tests.
-    default: http://shopcarts:8080
+    description: Base URL for Behave tests (should point to Ingress/Route URL).
+    default: http://127.0.0.1:8080
   - name: wait-seconds
     type: string
     description: Wait time for Behave steps.

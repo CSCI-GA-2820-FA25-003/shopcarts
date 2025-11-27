@@ -442,13 +442,13 @@ metadata:
     app.kubernetes.io/name: shopcarts
     app.kubernetes.io/component: tekton-task
 spec:
-  description: Run Behave BDD tests against the deployed application.
+  description: Run Behave BDD tests against the deployed application using Selenium to test the UI.
   workspaces:
   - name: source
     description: Workspace with the checked-out source code.
   params:
   - name: base-url
-    description: Base URL of the application under test.
+    description: Base URL of the application under test (should point to Ingress/Route URL, not cluster-internal address).
     type: string
   - name: wait-seconds
     description: Seconds to wait for responses in tests.
