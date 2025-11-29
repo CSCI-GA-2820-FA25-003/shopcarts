@@ -16,7 +16,11 @@ spec:
     - name: manifest-dir
       value: k8s
     - name: run-behave
-      value: "false"   # 想跑 BDD 时改为 "true"
+      value: "false"   # Set to "true" to run BDD tests
+    - name: base-url
+      # Set to Ingress URL for BDD tests (e.g., http://shopcarts.local or http://127.0.0.1:8080)
+      # Get Ingress URL: kubectl get ingress -n shopcarts shopcarts-ingress -o jsonpath='{.status.loadBalancer.ingress[0].ip}' || kubectl get ingress -n shopcarts shopcarts-ingress -o jsonpath='{.spec.rules[0].host}'
+      value: ""  # Default: http://127.0.0.1:8080 (K3D LoadBalancer) or set to actual Ingress URL
   workspaces:
     - name: pipeline-workspace
       persistentVolumeClaim:
