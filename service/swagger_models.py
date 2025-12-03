@@ -4,11 +4,16 @@ Swagger data models for Shopcart Service API documentation.
 This module defines the data models used for Swagger/OpenAPI documentation
 using flask-restx api.model() decorators.
 """
-from flask_restx import fields
+try:
+    from flask_restx import fields  # pylint: disable=import-error
+except ImportError:
+    fields = None  # type: ignore
 
 
 def create_swagger_models(api_instance):
     """Create and register all Swagger models with the API instance."""
+    if fields is None or api_instance is None:
+        return {}
 
     # Define Item model
     item_model = api_instance.model(

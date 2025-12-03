@@ -20,6 +20,7 @@ Shopcart Service
 This service implements a REST API that allows you to Create, Read, Update
 and Delete Shopcarts
 """
+# pylint: disable=too-many-lines
 
 import decimal
 from decimal import Decimal
@@ -36,59 +37,70 @@ from service.common import status  # HTTP Status Codes
 class DummyNamespace:
     """Dummy namespace for when Swagger initialization fails."""
 
-    def route(self, *args, **kwargs):
+    def route(self, *_args, **_kwargs):  # pylint: disable=unused-argument
         """Dummy route decorator."""
         return lambda f: f
 
-    def doc(self, *args, **kwargs):
+    def doc(self, *_args, **_kwargs):  # pylint: disable=unused-argument
         """Dummy doc decorator."""
         return lambda f: f
 
-    def param(self, *args, **kwargs):
+    def param(self, *_args, **_kwargs):  # pylint: disable=unused-argument
         """Dummy param decorator."""
         return lambda f: f
 
-    def expect(self, *args, **kwargs):
+    def expect(self, *_args, **_kwargs):  # pylint: disable=unused-argument
         """Dummy expect decorator."""
         return lambda f: f
 
-    def marshal_with(self, *args, **kwargs):
+    def marshal_with(self, *_args, **_kwargs):  # pylint: disable=unused-argument
         """Dummy marshal_with decorator."""
         return lambda f: f
 
-    def marshal_list_with(self, *args, **kwargs):
+    def marshal_list_with(self, *_args, **_kwargs):  # pylint: disable=unused-argument
         """Dummy marshal_list_with decorator."""
         return lambda f: f
 
-    def response(self, *args, **kwargs):
+    def response(self, *_args, **_kwargs):  # pylint: disable=unused-argument
         """Dummy response decorator."""
         return lambda f: f
+
+
+def _create_api_instance():
+    """Create API instance with consistent configuration."""
+    try:
+        from flask_restx import Api  # pylint: disable=import-error,import-outside-toplevel
+        return Api(
+            app,
+            version="1.0.0",
+            title="Shopcart REST API Service",
+            description="This service manages customer shopcarts and their items.",
+            doc="/apidocs/",
+        )
+    except ImportError:
+        return None
 
 
 def _init_swagger():
     """Initialize Swagger API and models."""
     try:
-        api = app.config.get("API")
-        if api is None:
+        api_instance = app.config.get("API")
+        if api_instance is None:
             # Fallback if API not initialized (for testing)
-            from flask_restx import Api
-            api = Api(
-                app,
-                version="1.0.0",
-                title="Shopcart REST API Service",
-                description="This service manages customer shopcarts and their items.",
-                doc="/apidocs/",
-            )
-            app.config["API"] = api
+            api_instance = _create_api_instance()
+            if api_instance is not None:
+                app.config["API"] = api_instance
+            else:
+                return DummyNamespace(), DummyNamespace(), {}
 
         # Create namespaces for shopcarts and items
-        ns = api.namespace("shopcarts", description="Shopcart operations", path="/shopcarts")
-        items_ns = api.namespace("items", description="Shopcart item operations", path="/shopcarts/<int:customer_id>/items")
+        ns_instance = api_instance.namespace("shopcarts", description="Shopcart operations", path="/shopcarts")
+        items_ns_instance = api_instance.namespace("items", description="Shopcart item operations", path="/shopcarts/<int:customer_id>/items")
 
         # Import and create Swagger models
-        from service.swagger_models import create_swagger_models  # noqa: E402
-        swagger_models = create_swagger_models(api)
-        return ns, items_ns, swagger_models
+        from service.swagger_models import create_swagger_models  # pylint: disable=import-outside-toplevel
+        swagger_models_dict = create_swagger_models(api_instance)
+        return ns_instance, items_ns_instance, swagger_models_dict
     except Exception:  # pylint: disable=broad-except
         # If Swagger initialization fails, create dummy objects
         return DummyNamespace(), DummyNamespace(), {}
