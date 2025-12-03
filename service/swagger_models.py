@@ -4,9 +4,7 @@ Swagger data models for Shopcart Service API documentation.
 This module defines the data models used for Swagger/OpenAPI documentation
 using flask-restx api.model() decorators.
 """
-from flask_restx import fields, Model
-from flask_restx.inputs import email
-from flask_restx.reqparse import RequestParser
+from flask_restx import fields
 
 
 def create_swagger_models(api_instance):
@@ -277,4 +275,3 @@ def create_swagger_models(api_instance):
         "shopcart_totals": shopcart_totals_model,
         "error": error_model,
     }
-

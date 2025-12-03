@@ -27,12 +27,44 @@ from datetime import datetime, timezone
 from dataclasses import dataclass
 from flask import jsonify, request, url_for, abort
 from flask import current_app as app  # Import Flask application
-from flask_restx import Namespace, Resource, fields
 from sqlalchemy import func
 from service.models import Shopcart, ShopcartItem
 from service.common import status  # HTTP Status Codes
 
+
 # Initialize Swagger namespace
+class DummyNamespace:
+    """Dummy namespace for when Swagger initialization fails."""
+
+    def route(self, *args, **kwargs):
+        """Dummy route decorator."""
+        return lambda f: f
+
+    def doc(self, *args, **kwargs):
+        """Dummy doc decorator."""
+        return lambda f: f
+
+    def param(self, *args, **kwargs):
+        """Dummy param decorator."""
+        return lambda f: f
+
+    def expect(self, *args, **kwargs):
+        """Dummy expect decorator."""
+        return lambda f: f
+
+    def marshal_with(self, *args, **kwargs):
+        """Dummy marshal_with decorator."""
+        return lambda f: f
+
+    def marshal_list_with(self, *args, **kwargs):
+        """Dummy marshal_list_with decorator."""
+        return lambda f: f
+
+    def response(self, *args, **kwargs):
+        """Dummy response decorator."""
+        return lambda f: f
+
+
 def _init_swagger():
     """Initialize Swagger API and models."""
     try:
@@ -59,22 +91,8 @@ def _init_swagger():
         return ns, items_ns, swagger_models
     except Exception:  # pylint: disable=broad-except
         # If Swagger initialization fails, create dummy objects
-        class DummyNamespace:
-            def route(self, *args, **kwargs):
-                return lambda f: f
-            def doc(self, *args, **kwargs):
-                return lambda f: f
-            def param(self, *args, **kwargs):
-                return lambda f: f
-            def expect(self, *args, **kwargs):
-                return lambda f: f
-            def marshal_with(self, *args, **kwargs):
-                return lambda f: f
-            def marshal_list_with(self, *args, **kwargs):
-                return lambda f: f
-            def response(self, *args, **kwargs):
-                return lambda f: f
         return DummyNamespace(), DummyNamespace(), {}
+
 
 ns, items_ns, swagger_models = _init_swagger()
 
