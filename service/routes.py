@@ -27,7 +27,7 @@ from datetime import datetime, timezone
 from dataclasses import dataclass
 from flask import jsonify, request, url_for, abort
 from flask import current_app as app  # Import Flask application
-from flask_restx import Api, fields, Namespace
+from flask_restx import Api, fields, Namespace  # pylint: disable=import-error
 from sqlalchemy import func
 from service.models import Shopcart, ShopcartItem
 from service.common import status  # HTTP Status Codes
@@ -39,7 +39,7 @@ def _get_api():
     """Get or create the Flask-RESTX API instance."""
     # pylint: disable=no-member,used-before-assignment
     if not hasattr(app, "extensions") or "restx" not in app.extensions:
-        api = Api(
+        api_instance = Api(
             app,
             version="1.0.0",
             title="Shopcart REST API Service",
@@ -47,8 +47,8 @@ def _get_api():
             doc="/apidocs/",
         )
     else:
-        api = app.extensions["restx"]["api"]
-    return api
+        api_instance = app.extensions["restx"]["api"]
+    return api_instance
 
 
 # Create API instance (initialized when module is imported within app context)
