@@ -32,6 +32,7 @@ from sqlalchemy import func
 from service.models import Shopcart, ShopcartItem
 from service.common import status  # HTTP Status Codes
 
+
 # Initialize Flask-RESTX API (will be created when routes are imported)
 # This is done lazily to ensure app context is available
 def _get_api():
@@ -48,6 +49,7 @@ def _get_api():
     else:
         api = app.extensions["restx"]["api"]
     return api
+
 
 # Create API instance (initialized when module is imported within app context)
 # Routes are imported within app.app_context() in service/__init__.py
