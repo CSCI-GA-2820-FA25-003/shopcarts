@@ -512,11 +512,7 @@ def create_shopcarts():
         "get_shopcarts", customer_id=shopcart.customer_id, _external=True
     )
 
-    return (
-        jsonify(shopcart.serialize()),
-        status.HTTP_201_CREATED,
-        {"Location": location_url},
-    )
+    return shopcart.serialize(), status.HTTP_201_CREATED, {"Location": location_url}
 
 
 ######################################################################
@@ -541,7 +537,7 @@ def get_shopcarts(customer_id):
 
     response = shopcart.to_customer_view()
     app.logger.info("Returning shopcart for customer: %s", customer_id)
-    return jsonify(response), status.HTTP_200_OK
+    return response, status.HTTP_200_OK
 
 
 ######################################################################
@@ -619,7 +615,7 @@ def update_shopcart(customer_id: int):
     if items is not None:
         shopcart.set_items(items)
     shopcart.update()
-    return jsonify(shopcart.serialize()), status.HTTP_200_OK
+    return shopcart.serialize(), status.HTTP_200_OK
 
 
 ######################################################################
@@ -641,7 +637,7 @@ def checkout_shopcart(customer_id: int):
     shopcart.status = "abandoned"
     shopcart.last_modified = datetime.utcnow()
     shopcart.update()
-    return jsonify(shopcart.serialize()), status.HTTP_200_OK
+    return shopcart.serialize(), status.HTTP_200_OK
 
 
 ######################################################################
@@ -667,7 +663,7 @@ def cancel_shopcart(customer_id: int):
         shopcart.last_modified = datetime.utcnow()
         shopcart.update()
     app.logger.info("Shopcart for customer [%s] cancelled.", customer_id)
-    return jsonify(shopcart.serialize()), status.HTTP_200_OK
+    return shopcart.serialize(), status.HTTP_200_OK
 
 
 ######################################################################
@@ -693,7 +689,7 @@ def lock_shopcart(customer_id: int):
         shopcart.last_modified = datetime.utcnow()
         shopcart.update()
     app.logger.info("Shopcart for customer [%s] locked.", customer_id)
-    return jsonify(shopcart.serialize()), status.HTTP_200_OK
+    return shopcart.serialize(), status.HTTP_200_OK
 
 
 ######################################################################
@@ -719,7 +715,7 @@ def expire_shopcart(customer_id: int):
         shopcart.last_modified = datetime.utcnow()
         shopcart.update()
     app.logger.info("Shopcart for customer [%s] expired.", customer_id)
-    return jsonify(shopcart.serialize()), status.HTTP_200_OK
+    return shopcart.serialize(), status.HTTP_200_OK
 
 
 ######################################################################
@@ -745,7 +741,7 @@ def reactivate_shopcart(customer_id: int):
         shopcart.last_modified = datetime.utcnow()
         shopcart.update()
     app.logger.info("Shopcart for customer [%s] reactivated.", customer_id)
-    return jsonify(shopcart.serialize()), status.HTTP_200_OK
+    return shopcart.serialize(), status.HTTP_200_OK
 
 
 ######################################################################
@@ -800,7 +796,7 @@ def update_shopcart_item(customer_id: int, product_id: int):
     if q == 0:
         shopcart.remove_item(product_id)
         shopcart.update()
-        return jsonify(shopcart.serialize()), status.HTTP_200_OK
+        return shopcart.serialize(), status.HTTP_200_OK
 
     price_raw = payload.get("price", float(current.price))
     try:
@@ -813,7 +809,7 @@ def update_shopcart_item(customer_id: int, product_id: int):
         product_id=product_id, quantity=q, price=price, description=desc
     )
     shopcart.update()
-    return jsonify(shopcart.serialize()), status.HTTP_200_OK
+    return shopcart.serialize(), status.HTTP_200_OK
 
 
 ######################################################################
@@ -850,17 +846,13 @@ def list_shopcarts():
     if filters.created_after is not None:
         query = query.filter(Shopcart.created_date >= filters.created_after)
 
-    return (
-        jsonify(
-            [
-                cart.serialize()
-                for cart in _filter_by_total_price(
-                    query.all(), filters.min_total, filters.max_total
-                )
-            ]
-        ),
-        status.HTTP_200_OK,
-    )
+    results = [
+        cart.serialize()
+        for cart in _filter_by_total_price(
+            query.all(), filters.min_total, filters.max_total
+        )
+    ]
+    return results, status.HTTP_200_OK
 
 
 ######################################################################
@@ -912,7 +904,7 @@ def add_item_to_shopcart(customer_id):
             "Unable to persist cart item.",
         )
 
-    return jsonify(updated_item.serialize()), status.HTTP_201_CREATED
+    return updated_item.serialize(), status.HTTP_201_CREATED
 
 
 ######################################################################
@@ -945,7 +937,7 @@ def read_item_from_shopcart(customer_id, product_id):
             f"Product with id {product_id} not found in this shopcart",
         )
 
-    return jsonify(item.serialize()), status.HTTP_200_OK
+    return item.serialize(), status.HTTP_200_OK
 
 
 ##############################################
@@ -1113,7 +1105,7 @@ def list_items_in_shopcart(customer_id):
     # convert to list of dicts
     items = query.order_by(ShopcartItem.id).all()
     results = [item.serialize() for item in items]
-    return jsonify(results), status.HTTP_200_OK
+    return results, status.HTTP_200_OK
 
 
 ##############################################
@@ -1156,7 +1148,7 @@ def get_shopcart_totals(customer_id: int):
         "discount": float(discount),
         "total": float(subtotal - discount),
     }
-    return jsonify(aggregate), status.HTTP_200_OK
+    return aggregate, status.HTTP_200_OK
 
 
 def _parse_iso8601_to_utc(value: str, field: str) -> datetime:
