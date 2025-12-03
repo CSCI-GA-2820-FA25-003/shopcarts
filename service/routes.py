@@ -27,7 +27,7 @@ from datetime import datetime, timezone
 from dataclasses import dataclass
 from flask import jsonify, request, url_for, abort
 from flask import current_app as app  # Import Flask application
-from flask_restx import Api, Resource, fields, Namespace
+from flask_restx import Api, fields, Namespace
 from sqlalchemy import func
 from service.models import Shopcart, ShopcartItem
 from service.common import status  # HTTP Status Codes
