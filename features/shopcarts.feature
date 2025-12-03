@@ -103,3 +103,57 @@ Feature: Shopcart creation via admin UI
     When I send a GET request to "/shopcarts?status=INVALID_STATUS"
     Then I should receive a 400 Bad Request response
 
+  # ============================================================================
+  # LOCK/EXPIRE OPERATIONS - Backend API
+  # ============================================================================
+  Scenario: Successfully lock a cart
+    Given an active shopcart exists for customer 101
+    When I send a PATCH request to "/shopcarts/101/lock"
+    Then I should receive a 200 OK response
+    And the cart's status should update to "locked"
+    And the last_modified timestamp should change
+
+  Scenario: Successfully expire a cart
+    Given a shopcart exists for customer 202
+    When I send a PATCH request to "/shopcarts/202/expire"
+    Then I should receive a 200 OK response
+    And the cart's status should update to "expired"
+    And the last_modified timestamp should change
+
+  Scenario: Attempt to lock a non-existent cart
+    Given there is no shopcart with customer_id=999
+    When I send a PATCH request to "/shopcarts/999/lock"
+    Then I should receive a 404 Not Found response
+    And the response should state the shopcart was not found
+
+  Scenario: Attempt to expire a non-existent cart
+    Given there is no shopcart with customer_id=888
+    When I send a PATCH request to "/shopcarts/888/expire"
+    Then I should receive a 404 Not Found response
+    And the response should state the shopcart was not found
+
+  # ============================================================================
+  # LOCK/EXPIRE OPERATIONS - Frontend UI
+  # ============================================================================
+  Scenario: UI locks cart successfully
+    Given I am viewing the shopcart management list in the Admin UI
+    And a cart for customer "101" with status "active" is visible
+    When I click the "Lock" button for that cart
+    Then the cart's status should immediately change to "locked" in the table
+    And I should see a toast notification saying "Cart locked successfully"
+
+  Scenario: UI expires cart successfully
+    Given I am viewing the shopcart management list in the Admin UI
+    And a cart for customer "202" with status "active" is visible
+    When I click the "Expire" button for that cart
+    Then the cart's status should immediately change to "expired" in the table
+    And I should see a toast notification saying "Cart expired successfully"
+
+  Scenario: UI shows error for invalid action (e.g., cart not found)
+    Given I am viewing the shopcart management list
+    And I am about to click "Lock" for customer "999"
+    And another admin deletes that cart just before I click
+    When I click the "Lock" button for cart "999"
+    Then I should see an error message saying "Error: Cart not found"
+    And the cart for "999" should be removed from the list
+
