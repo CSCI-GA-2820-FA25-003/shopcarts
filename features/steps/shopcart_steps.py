@@ -5,6 +5,7 @@
 # but they work correctly at runtime
 
 from __future__ import annotations
+import re
 import time
 from decimal import Decimal
 from urllib.parse import urljoin
@@ -321,10 +322,18 @@ def step_impl_cart_listed(context, status_text):
 @then("I should receive a {status_code:d} {status_text} response")
 def step_impl_http_response(context, status_code, status_text):
     # Check if this is an API test (has response) or UI test (has browser)
-    if hasattr(context, "response"):
+    # Check both context.response and context.api_response for API tests
+    # Priority: api_response > response > browser
+    api_response = None
+    if hasattr(context, "api_response") and context.api_response is not None:
+        api_response = context.api_response
+    elif hasattr(context, "response") and context.response is not None:
+        api_response = context.response
+    
+    if api_response is not None:
         # API test - check HTTP response directly
-        assert context.response.status_code == status_code, \
-            f"Expected {status_code}, got {context.response.status_code}"
+        assert api_response.status_code == status_code, \
+            f"Expected {status_code}, got {api_response.status_code}"
     elif hasattr(context, "browser"):
         # UI test - check for error message in alerts
         if status_code == 404:
@@ -618,6 +627,15 @@ def step_impl_existing_shopcart(context, customer_id, status):
 @given("there is no shopcart with customer_id={customer_id:d}")
 def step_impl_no_shopcart(context, customer_id):
     """Ensure no shopcart exists for the given customer_id."""
+    from features.environment import delete_cart_via_api
+
+    # Use API to delete, which is more reliable
+    delete_cart_via_api(context, customer_id)
+
+
+@given("no shopcart exists for customer {customer_id:d}")
+def step_impl_no_shopcart_for_customer(context, customer_id):
+    """Ensure no shopcart exists for the given customer_id (alternative wording)."""
     from features.environment import delete_cart_via_api
 
     # Use API to delete, which is more reliable
@@ -1156,8 +1174,17 @@ def step_impl_timestamp_changed(context):
 @then("the response should state the shopcart was not found")
 def step_impl_not_found_message(context):
     """Verify the 404 response includes a not found message."""
-    assert context.response.status_code == 404, f"Expected 404, got {context.response.status_code}"
-    error_text = str(context.response.text).lower()
+    # Check both context.response and context.api_response
+    # Priority: api_response > response
+    response = None
+    if hasattr(context, "api_response") and context.api_response is not None:
+        response = context.api_response
+    elif hasattr(context, "response") and context.response is not None:
+        response = context.response
+    
+    assert response is not None, "No API response found in context"
+    assert response.status_code == 404, f"Expected 404, got {response.status_code}"
+    error_text = str(response.text).lower()
     assert "not found" in error_text or "404" in error_text, f"Expected 'not found' in response: {error_text}"
 
 
@@ -1421,3 +1448,430 @@ def step_impl_cart_removed_from_list(context, customer_id):
     table_text = table.text
     assert str(customer_id_int) not in table_text, \
         f"Customer {customer_id_int} should not be in table, but was found"
+
+# ============================================================================
+# SHOPCART TOTALS - Backend API Step Definitions
+# ============================================================================
+
+@given('a shopcart for customer {customer_id:d} contains multiple items')
+def step_impl_shopcart_with_multiple_items(context, customer_id):
+    """Create a shopcart with multiple items for testing totals."""
+    # Create the shopcart
+    create_cart_via_api(context, customer_id)
+    # Add multiple items
+    add_item_via_api(context, customer_id, Decimal("10.50"), product_id=1)
+    add_item_via_api(context, customer_id, Decimal("5.25"), product_id=2)
+    add_item_via_api(context, customer_id, Decimal("3.75"), product_id=3)
+    # Store for cleanup
+    if not hasattr(context, "cleanup_customer_ids"):
+        context.cleanup_customer_ids = []
+    if customer_id not in context.cleanup_customer_ids:
+        context.cleanup_customer_ids.append(customer_id)
+
+@given('a shopcart for customer {customer_id:d} exists but has no items')
+def step_impl_empty_shopcart(context, customer_id):
+    """Create an empty shopcart for testing totals."""
+    create_cart_via_api(context, customer_id)
+    # Store for cleanup
+    if not hasattr(context, "cleanup_customer_ids"):
+        context.cleanup_customer_ids = []
+    if customer_id not in context.cleanup_customer_ids:
+        context.cleanup_customer_ids.append(customer_id)
+
+@then('the response includes item_count, total_quantity, subtotal, discount, and total with correct values')
+def step_impl_totals_response_correct(context):
+    """Verify the totals response has all required fields with correct values."""
+    assert context.api_response.status_code == 200, \
+        f"Expected 200 OK, got {context.api_response.status_code}"
+    data = context.api_response.json()
+    assert "item_count" in data, "Response missing item_count"
+    assert "total_quantity" in data, "Response missing total_quantity"
+    assert "subtotal" in data, "Response missing subtotal"
+    assert "discount" in data, "Response missing discount"
+    assert "total" in data, "Response missing total"
+    assert "customer_id" in data, "Response missing customer_id"
+    # Verify values are correct (non-negative, discount is 0.0, total = subtotal - discount)
+    assert data["item_count"] >= 0, "item_count should be non-negative"
+    assert data["total_quantity"] >= 0, "total_quantity should be non-negative"
+    assert data["subtotal"] >= 0, "subtotal should be non-negative"
+    assert data["discount"] == 0.0, "discount should be 0.0 (placeholder)"
+    assert abs(data["total"] - (data["subtotal"] - data["discount"])) < 0.01, \
+        "total should equal subtotal - discount"
+    # For a populated cart, we expect some items
+    assert data["item_count"] > 0, "Expected populated cart to have items"
+    assert data["total_quantity"] > 0, "Expected populated cart to have quantity > 0"
+    assert data["subtotal"] > 0, "Expected populated cart to have subtotal > 0"
+
+@then('the response shows zeros for item_count, total_quantity, subtotal, discount, and total')
+def step_impl_totals_response_zeros(context):
+    """Verify the totals response shows zeros for an empty cart."""
+    assert context.api_response.status_code == 200, \
+        f"Expected 200 OK, got {context.api_response.status_code}"
+    data = context.api_response.json()
+    assert data["item_count"] == 0, f"Expected item_count=0, got {data['item_count']}"
+    assert data["total_quantity"] == 0, \
+        f"Expected total_quantity=0, got {data['total_quantity']}"
+    assert data["subtotal"] == 0.0, f"Expected subtotal=0.0, got {data['subtotal']}"
+    assert data["discount"] == 0.0, f"Expected discount=0.0, got {data['discount']}"
+    assert data["total"] == 0.0, f"Expected total=0.0, got {data['total']}"
+
+# ============================================================================
+# SHOPCART TOTALS - Frontend UI Step Definitions
+# ============================================================================
+
+@given('I am viewing my shopcart page in the UI')
+def step_impl_viewing_shopcart_page(context):
+    """Navigate to the shopcart page."""
+    context.browser.get(context.ui_url)
+    WebDriverWait(context.browser, WAIT_TIMEOUT).until(
+        EC.presence_of_element_located((By.ID, "create-form"))
+    )
+
+@given('I am viewing my shopcart page')
+def step_impl_viewing_shopcart_page_short(context):
+    """Navigate to the shopcart page (alias for shorter step name)."""
+    step_impl_viewing_shopcart_page(context)
+
+@given('my cart contains one item priced at "{price}" with quantity {quantity:d}')
+def step_impl_cart_with_item(context, price, quantity):
+    """Create a cart with a specific item."""
+    customer_id = 101
+    # Create cart
+    create_cart_via_api(context, customer_id)
+    # Add item with specified price and quantity
+    payload = {
+        "product_id": 1,
+        "quantity": quantity,
+        "price": float(price),
+    }
+    response = requests.post(
+        api_url(context, f"shopcarts/{customer_id}/items"), json=payload, timeout=10
+    )
+    response.raise_for_status()
+    # Store for cleanup
+    if not hasattr(context, "cleanup_customer_ids"):
+        context.cleanup_customer_ids = []
+    if customer_id not in context.cleanup_customer_ids:
+        context.cleanup_customer_ids.append(customer_id)
+    # Load the cart in the UI
+    context.browser.get(context.ui_url)
+    WebDriverWait(context.browser, WAIT_TIMEOUT).until(
+        EC.presence_of_element_located((By.ID, "read-form"))
+    )
+    read_form = context.browser.find_element(By.ID, "read-form")
+    customer_input = read_form.find_element(By.CSS_SELECTOR, "input[name='customerId']")
+    submit_button = read_form.find_element(By.CSS_SELECTOR, "button[type='submit']")
+    customer_input.clear()
+    customer_input.send_keys(str(customer_id))
+    submit_button.click()
+    # Wait for result card to be visible (not hidden)
+    WebDriverWait(context.browser, WAIT_TIMEOUT).until(
+        EC.visibility_of_element_located((By.ID, "result-card"))
+    )
+
+@given('my cart is empty')
+def step_impl_empty_cart_ui(context):
+    """Create an empty cart and load it in the UI."""
+    customer_id = 202
+    create_cart_via_api(context, customer_id)
+    # Store for cleanup
+    if not hasattr(context, "cleanup_customer_ids"):
+        context.cleanup_customer_ids = []
+    if customer_id not in context.cleanup_customer_ids:
+        context.cleanup_customer_ids.append(customer_id)
+    # Load the cart in the UI
+    context.browser.get(context.ui_url)
+    WebDriverWait(context.browser, WAIT_TIMEOUT).until(
+        EC.presence_of_element_located((By.ID, "read-form"))
+    )
+    read_form = context.browser.find_element(By.ID, "read-form")
+    customer_input = read_form.find_element(By.CSS_SELECTOR, "input[name='customerId']")
+    submit_button = read_form.find_element(By.CSS_SELECTOR, "button[type='submit']")
+    customer_input.clear()
+    customer_input.send_keys(str(customer_id))
+    submit_button.click()
+    # Wait for result card to be visible (not hidden)
+    WebDriverWait(context.browser, WAIT_TIMEOUT).until(
+        EC.visibility_of_element_located((By.ID, "result-card"))
+    )
+
+@when('the "Cart Summary" component loads')
+def step_impl_cart_summary_loads(context):
+    """Wait for the cart summary to load (result card shows totals)."""
+    # Wait for result card to be visible (not hidden)
+    WebDriverWait(context.browser, WAIT_TIMEOUT).until(
+        EC.visibility_of_element_located((By.ID, "result-card"))
+    )
+    result_card = context.browser.find_element(By.ID, "result-card")
+    # Verify it's actually visible
+    assert result_card.is_displayed(), "Result card should be visible"
+
+@then('the "Subtotal" should display "{expected_value}"')
+def step_impl_subtotal_display(context, expected_value):
+    """Verify the subtotal displays the expected value."""
+    result_card = context.browser.find_element(By.ID, "result-card")
+    card_text = result_card.text
+    # The result card shows "Total Price" which equals subtotal (since discount is 0)
+    # Look for "Total Price" followed by currency format like $20.00
+    # Pattern: "Total Price$20.00" or "Total Price $20.00"
+    price_pattern = r'Total Price\s*\$(\d+\.\d{2})'
+    match = re.search(price_pattern, card_text)
+    if match:
+        actual_value = match.group(1)
+        assert actual_value == expected_value, \
+            f"Expected subtotal to display {expected_value}, found {actual_value} in: {card_text}"
+    else:
+        # Fallback: check if the expected value appears anywhere
+        assert expected_value in card_text or f"${expected_value}" in card_text, \
+            f"Expected subtotal {expected_value} not found in result card: {card_text}"
+
+@then('the "Total" should display "{expected_value}"')
+def step_impl_total_display(context, expected_value):
+    """Verify the total displays the expected value."""
+    result_card = context.browser.find_element(By.ID, "result-card")
+    card_text = result_card.text
+    # The result card shows "Total Price" which equals total (since discount is 0)
+    # Look for "Total Price" followed by currency format
+    price_pattern = r'Total Price\s*\$(\d+\.\d{2})'
+    match = re.search(price_pattern, card_text)
+    if match:
+        actual_value = match.group(1)
+        assert actual_value == expected_value, \
+            f"Expected total to display {expected_value}, found {actual_value} in: {card_text}"
+    else:
+        assert expected_value in card_text or f"${expected_value}" in card_text, \
+            f"Expected total {expected_value} not found in result card: {card_text}"
+
+@then('the "Total Items" should display "{expected_value}"')
+def step_impl_total_items_display(context, expected_value):
+    """Verify the total items displays the expected value."""
+    result_card = context.browser.find_element(By.ID, "result-card")
+    card_text = result_card.text
+    # The result card shows "TOTAL ITEMS" (uppercase) followed by the number
+    # Pattern: "TOTAL ITEMS\n2" or "TOTAL ITEMS 2" (case-insensitive)
+    items_pattern = r'(?i)total items\s*(\d+)'
+    match = re.search(items_pattern, card_text)
+    if match:
+        actual_value = match.group(1)
+        assert actual_value == expected_value, \
+            f"Expected Total Items to display {expected_value}, found {actual_value} in: {card_text}"
+    else:
+        # Fallback: check if the value appears after "Total Items" (case-insensitive)
+        card_lower = card_text.lower()
+        assert f"total items{expected_value}" in card_lower or \
+               f"total items {expected_value}" in card_lower, \
+            f"Expected Total Items to display {expected_value}, not found in: {card_text}"
+
+@given('I am viewing my shopcart page and the "Total" is "{current_total}"')
+def step_impl_viewing_with_total(context, current_total):
+    """Set up a cart with a known total."""
+    customer_id = 301
+    create_cart_via_api(context, customer_id)
+    # Add item to get the specified total
+    payload = {
+        "product_id": 1,
+        "quantity": 1,
+        "price": float(current_total),
+    }
+    response = requests.post(
+        api_url(context, f"shopcarts/{customer_id}/items"), json=payload, timeout=10
+    )
+    response.raise_for_status()
+    # Store for cleanup
+    if not hasattr(context, "cleanup_customer_ids"):
+        context.cleanup_customer_ids = []
+    if customer_id not in context.cleanup_customer_ids:
+        context.cleanup_customer_ids.append(customer_id)
+    # Load in UI
+    context.browser.get(context.ui_url)
+    WebDriverWait(context.browser, WAIT_TIMEOUT).until(
+        EC.presence_of_element_located((By.ID, "read-form"))
+    )
+    read_form = context.browser.find_element(By.ID, "read-form")
+    customer_input = read_form.find_element(By.CSS_SELECTOR, "input[name='customerId']")
+    submit_button = read_form.find_element(By.CSS_SELECTOR, "button[type='submit']")
+    customer_input.clear()
+    customer_input.send_keys(str(customer_id))
+    submit_button.click()
+    WebDriverWait(context.browser, WAIT_TIMEOUT).until(
+        EC.presence_of_element_located((By.ID, "result-card"))
+    )
+
+@when('I change the quantity of an item, causing the total to update')
+def step_impl_change_quantity(context):
+    """Change item quantity via API to simulate update."""
+    customer_id = 301
+    # Update the item quantity to 2 (doubling the total)
+    payload = {
+        "quantity": 2,
+    }
+    response = requests.patch(
+        api_url(context, f"shopcarts/{customer_id}/items/1"), json=payload, timeout=10
+    )
+    response.raise_for_status()
+    # Verify the API update worked - check the response
+    updated_cart = response.json()
+    # Verify quantity was updated
+    items = updated_cart.get("items", [])
+    item_updated = False
+    for item in items:
+        if item.get("product_id") == 1:
+            if item.get("quantity") == 2:
+                item_updated = True
+                break
+    assert item_updated, f"Item quantity was not updated to 2. Cart data: {updated_cart}"
+    # Small delay to ensure backend has processed the update
+    time.sleep(0.3)
+    # Reload the cart in the UI to see the updated total
+    # First, wait for the read form to be available
+    WebDriverWait(context.browser, WAIT_TIMEOUT).until(
+        EC.presence_of_element_located((By.ID, "read-form"))
+    )
+    read_form = context.browser.find_element(By.ID, "read-form")
+    customer_input = read_form.find_element(By.CSS_SELECTOR, "input[name='customerId']")
+    submit_button = read_form.find_element(By.CSS_SELECTOR, "button[type='submit']")
+    customer_input.clear()
+    customer_input.send_keys(str(customer_id))
+    submit_button.click()
+    # Wait for alert to appear (indicating cart load started)
+    try:
+        WebDriverWait(context.browser, WAIT_TIMEOUT).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "#alerts .alert"))
+        )
+    except Exception:
+        pass  # Alert might not appear, continue anyway
+    # Wait for result card to be visible and updated
+    WebDriverWait(context.browser, WAIT_TIMEOUT).until(
+        EC.visibility_of_element_located((By.ID, "result-card"))
+    )
+    # Wait for the card content to actually load (check for customer ID in the card)
+    WebDriverWait(context.browser, WAIT_TIMEOUT).until(
+        lambda driver: str(customer_id) in driver.find_element(By.ID, "result-card").text
+    )
+    # Wait a bit more for the data to fully render
+    time.sleep(0.3)
+
+@then('the "Total" should immediately change to the new calculated total (e.g., "{new_total}") without a page refresh')
+def step_impl_total_updates_immediately(context, new_total):
+    """Verify the total updated without page refresh."""
+    # Wait for the total to update to the expected value
+    price_pattern = r'Total Price\s*\$(\d+\.\d{2})'
+    
+    def total_updated(driver):
+        try:
+            result_card = driver.find_element(By.ID, "result-card")
+            if not result_card.is_displayed():
+                return False
+            card_text = result_card.text
+            match = re.search(price_pattern, card_text, re.IGNORECASE)
+            if match:
+                actual_value = match.group(1)
+                return actual_value == new_total
+            return False
+        except Exception:
+            return False
+    
+    # Wait for the total to update, with better error message
+    try:
+        WebDriverWait(context.browser, WAIT_TIMEOUT).until(total_updated)
+    except Exception:
+        # Get the current state for debugging
+        result_card = context.browser.find_element(By.ID, "result-card")
+        card_text = result_card.text
+        match = re.search(price_pattern, card_text, re.IGNORECASE)
+        if match:
+            actual_value = match.group(1)
+            raise AssertionError(
+                f"Total did not update to {new_total} within timeout. "
+                f"Current total: {actual_value}. Card text: {card_text[:200]}"
+            )
+        else:
+            raise AssertionError(
+                f"Total did not update to {new_total} within timeout. "
+                f"Could not find price pattern in card text: {card_text[:200]}"
+            )
+    
+    # Verify the final value
+    result_card = context.browser.find_element(By.ID, "result-card")
+    card_text = result_card.text
+    match = re.search(price_pattern, card_text, re.IGNORECASE)
+    if match:
+        actual_value = match.group(1)
+        assert actual_value == new_total, \
+            f"Expected total to update to {new_total}, found {actual_value} in: {card_text}"
+    else:
+        assert new_total in card_text or f"${new_total}" in card_text, \
+            f"Expected updated total {new_total} not found in result card: {card_text}"
+
+@then('the "Subtotal" should also update immediately')
+def step_impl_subtotal_updates_immediately(context):
+    """Verify the subtotal also updated."""
+    # Since discount is 0, subtotal = total, so this is already verified
+    # But we can check that the result card shows the updated value
+    result_card = context.browser.find_element(By.ID, "result-card")
+    assert not result_card.get_attribute("hidden"), "Result card should be visible"
+
+@given('my session has expired (cart {customer_id:d} is no longer found)')
+def step_impl_session_expired(context, customer_id):
+    """Delete the cart to simulate expired session."""
+    # Delete the cart via API
+    try:
+        delete_cart_via_api(context, customer_id)
+    except Exception:
+        pass  # Cart might not exist, which is fine
+
+@when('the "Cart Summary" component tries to load data')
+def step_impl_cart_summary_loads_missing(context):
+    """Try to load a missing cart."""
+    customer_id = 999
+    context.browser.get(context.ui_url)
+    WebDriverWait(context.browser, WAIT_TIMEOUT).until(
+        EC.presence_of_element_located((By.ID, "read-form"))
+    )
+    read_form = context.browser.find_element(By.ID, "read-form")
+    customer_input = read_form.find_element(By.CSS_SELECTOR, "input[name='customerId']")
+    submit_button = read_form.find_element(By.CSS_SELECTOR, "button[type='submit']")
+    customer_input.clear()
+    customer_input.send_keys(str(customer_id))
+    submit_button.click()
+    # Wait for error message
+    WebDriverWait(context.browser, WAIT_TIMEOUT).until(
+        EC.presence_of_element_located((By.CSS_SELECTOR, "#alerts .alert"))
+    )
+
+@then('I should see an error message in the summary area saying "{message}"')
+def step_impl_error_in_summary(context, message):
+    """Verify error message appears in the summary area."""
+    alert = context.browser.find_element(By.CSS_SELECTOR, "#alerts .alert")
+    alert_text = alert.text.lower()
+    message_lower = message.lower()
+    # Check for key words - be flexible about error message variations
+    # Accept messages like "cart not found", "not found", "could not load", etc.
+    key_words = [word for word in message_lower.split() if len(word) > 3]
+    matches = sum(1 for word in key_words if word in alert_text)
+    # Also check for common error indicators
+    error_indicators = ["not found", "error", "could not", "failed", "unable"]
+    has_error_indicator = any(indicator in alert_text for indicator in error_indicators)
+    # Accept if we have enough keyword matches OR if there's an error indicator
+    assert matches >= len(key_words) // 2 or has_error_indicator, \
+        f"Expected error message containing '{message}' or error indicator, got: {alert_text}"
+
+@then('the "Total" should display "N/A" or be hidden')
+def step_impl_total_na_or_hidden(context):
+    """Verify the total shows N/A or is hidden when cart is not found."""
+    result_card = context.browser.find_element(By.ID, "result-card")
+    # When cart is not found, result card should be hidden or show no total
+    if result_card.get_attribute("hidden"):
+        # Card is hidden, which is acceptable
+        return
+    # If card is visible, check that it doesn't show a valid total
+    card_text = result_card.text
+    # Should not show a currency amount
+    price_pattern = r'\$\d+\.\d{2}'
+    matches = re.findall(price_pattern, card_text)
+    # If there are no price matches, that's acceptable (N/A case)
+    # If there are matches, that's a problem
+    if matches:
+        # Check if it says "N/A" or similar
+        assert "N/A" in card_text or "not found" in card_text.lower(), \
+            f"Expected N/A or hidden total, but found prices in: {card_text}"

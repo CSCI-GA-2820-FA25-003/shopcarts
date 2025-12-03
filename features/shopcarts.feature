@@ -157,3 +157,57 @@ Feature: Shopcart creation via admin UI
     Then I should see an error message saying "Error: Cart not found"
     And the cart for "999" should be removed from the list
 
+  # ============================================================================
+  # SHOPCART TOTALS - Backend API
+  # ============================================================================
+  Scenario: Retrieve totals for a populated cart
+    Given a shopcart for customer 101 contains multiple items
+    When I send a GET request to "/shopcarts/101/totals"
+    Then I should receive a 200 OK response
+    And the response includes item_count, total_quantity, subtotal, discount, and total with correct values
+
+  Scenario: Retrieve totals for an empty cart
+    Given a shopcart for customer 202 exists but has no items
+    When I send a GET request to "/shopcarts/202/totals"
+    Then I should receive a 200 OK response
+    And the response shows zeros for item_count, total_quantity, subtotal, discount, and total
+
+  Scenario: Attempt to retrieve totals for a missing cart
+    Given no shopcart exists for customer 999
+    When I send a GET request to "/shopcarts/999/totals"
+    Then I should receive a 404 Not Found response
+    And the response should state the shopcart was not found
+
+  # ============================================================================
+  # SHOPCART TOTALS - Frontend UI
+  # ============================================================================
+  Scenario: UI displays correct totals for a populated cart
+    Given I am viewing my shopcart page in the UI
+    And my cart contains one item priced at "10.00" with quantity 2
+    When the "Cart Summary" component loads
+    Then the "Subtotal" should display "20.00"
+    And the "Total" should display "20.00"
+    And the "Total Items" should display "2"
+
+  Scenario: UI displays zero totals for an empty cart
+    Given I am viewing my shopcart page in the UI
+    And my cart is empty
+    When the "Cart Summary" component loads
+    Then the "Subtotal" should display "0.00"
+    And the "Total" should display "0.00"
+    And the "Total Items" should display "0"
+
+  Scenario: UI totals update automatically when item quantity changes
+    Given the shopcart admin UI is available
+    Given I am viewing my shopcart page and the "Total" is "10.00"
+    When I change the quantity of an item, causing the total to update
+    Then the "Total" should immediately change to the new calculated total (e.g., "20.00") without a page refresh
+    And the "Subtotal" should also update immediately
+
+  Scenario: UI shows an error if totals fail to load
+    Given I am viewing my shopcart page in the UI
+    And my session has expired (cart 999 is no longer found)
+    When the "Cart Summary" component tries to load data
+    Then I should see an error message in the summary area saying "Could not load totals"
+    And the "Total" should display "N/A" or be hidden
+
