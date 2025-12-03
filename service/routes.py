@@ -27,9 +27,56 @@ from datetime import datetime, timezone
 from dataclasses import dataclass
 from flask import jsonify, request, url_for, abort
 from flask import current_app as app  # Import Flask application
+from flask_restx import Namespace, Resource, fields
 from sqlalchemy import func
 from service.models import Shopcart, ShopcartItem
 from service.common import status  # HTTP Status Codes
+
+# Initialize Swagger namespace
+def _init_swagger():
+    """Initialize Swagger API and models."""
+    try:
+        api = app.config.get("API")
+        if api is None:
+            # Fallback if API not initialized (for testing)
+            from flask_restx import Api
+            api = Api(
+                app,
+                version="1.0.0",
+                title="Shopcart REST API Service",
+                description="This service manages customer shopcarts and their items.",
+                doc="/apidocs/",
+            )
+            app.config["API"] = api
+
+        # Create namespaces for shopcarts and items
+        ns = api.namespace("shopcarts", description="Shopcart operations", path="/shopcarts")
+        items_ns = api.namespace("items", description="Shopcart item operations", path="/shopcarts/<int:customer_id>/items")
+
+        # Import and create Swagger models
+        from service.swagger_models import create_swagger_models  # noqa: E402
+        swagger_models = create_swagger_models(api)
+        return ns, items_ns, swagger_models
+    except Exception:  # pylint: disable=broad-except
+        # If Swagger initialization fails, create dummy objects
+        class DummyNamespace:
+            def route(self, *args, **kwargs):
+                return lambda f: f
+            def doc(self, *args, **kwargs):
+                return lambda f: f
+            def param(self, *args, **kwargs):
+                return lambda f: f
+            def expect(self, *args, **kwargs):
+                return lambda f: f
+            def marshal_with(self, *args, **kwargs):
+                return lambda f: f
+            def marshal_list_with(self, *args, **kwargs):
+                return lambda f: f
+            def response(self, *args, **kwargs):
+                return lambda f: f
+        return DummyNamespace(), DummyNamespace(), {}
+
+ns, items_ns, swagger_models = _init_swagger()
 
 
 def _require_product_id(payload):
@@ -283,6 +330,11 @@ def admin_ui():
 # CREATE A NEW SHOPCART
 ######################################################################
 @app.route("/shopcarts", methods=["POST"])
+@ns.doc("create_shopcart")
+@ns.expect(swagger_models.get("shopcart_create"))
+@ns.marshal_with(swagger_models.get("shopcart"), code=201)
+@ns.response(409, "Conflict", swagger_models.get("error"))
+@ns.response(400, "Bad Request", swagger_models.get("error"))
 def create_shopcarts():
     """
     Create a Shopcart
@@ -324,6 +376,11 @@ def create_shopcarts():
 ######################################################################
 # READ A SHOPCART (Customer)
 ######################################################################
+@ns.route("/<int:customer_id>", methods=["GET"])
+@ns.doc("get_shopcart")
+@ns.param("customer_id", "The customer identifier")
+@ns.marshal_with(swagger_models.get("shopcart"), code=200)
+@ns.response(404, "Not Found", swagger_models.get("error"))
 @app.route("/shopcarts/<int:customer_id>", methods=["GET"])
 def get_shopcarts(customer_id):
     """
@@ -347,6 +404,11 @@ def get_shopcarts(customer_id):
 ######################################################################
 # DELETE A SHOPCART
 ######################################################################
+@ns.route("/<int:customer_id>", methods=["DELETE"])
+@ns.doc("delete_shopcart")
+@ns.param("customer_id", "The customer identifier")
+@ns.response(204, "No Content")
+@ns.response(404, "Not Found", swagger_models.get("error"))
 @app.route("/shopcarts/<int:customer_id>", methods=["DELETE"])
 def delete_shopcarts(customer_id):
     """
@@ -395,6 +457,13 @@ def check_content_type(content_type) -> None:
 ######################################################################
 # UPDATE A SHOPCART
 ######################################################################
+@ns.route("/<int:customer_id>", methods=["PUT", "PATCH"])
+@ns.doc("update_shopcart")
+@ns.param("customer_id", "The customer identifier")
+@ns.expect(swagger_models.get("shopcart_update"))
+@ns.marshal_with(swagger_models.get("shopcart"), code=200)
+@ns.response(404, "Not Found", swagger_models.get("error"))
+@ns.response(400, "Bad Request", swagger_models.get("error"))
 @app.route("/shopcarts/<int:customer_id>", methods=["PUT", "PATCH"])
 def update_shopcart(customer_id: int):
     """
@@ -600,6 +669,13 @@ def update_shopcart_item(customer_id: int, product_id: int):
 ######################################################################
 # LIST ALL SHOPCARTS
 ######################################################################
+@ns.route("", methods=["GET"])
+@ns.doc("list_shopcarts")
+@ns.param("status", "Filter by status", required=False)
+@ns.param("customer_id", "Filter by customer ID", required=False)
+@ns.param("min_total", "Minimum total price", required=False)
+@ns.param("max_total", "Maximum total price", required=False)
+@ns.marshal_list_with(swagger_models.get("shopcart"), code=200)
 @app.route("/shopcarts", methods=["GET"])
 def list_shopcarts():
     """
@@ -646,6 +722,13 @@ def list_shopcarts():
 ######################################################################
 # CREATE A NEW SHOPCART ITEM
 ######################################################################
+@items_ns.route("", methods=["POST"])
+@items_ns.doc("add_item_to_shopcart")
+@items_ns.param("customer_id", "The customer identifier")
+@items_ns.expect(swagger_models.get("item_create"))
+@items_ns.marshal_with(swagger_models.get("item"), code=201)
+@items_ns.response(404, "Shopcart Not Found", swagger_models.get("error"))
+@items_ns.response(400, "Bad Request", swagger_models.get("error"))
 @app.route("/shopcarts/<int:customer_id>/items", methods=["POST"])
 def add_item_to_shopcart(customer_id):
     """Add an Item to a Shopcart"""
@@ -694,6 +777,12 @@ def add_item_to_shopcart(customer_id):
 ######################################################################
 # READ AN ITEM FROM SHOPCART
 ######################################################################
+@items_ns.route("/<int:product_id>", methods=["GET"])
+@items_ns.doc("read_item_from_shopcart")
+@items_ns.param("customer_id", "The customer identifier")
+@items_ns.param("product_id", "The product identifier")
+@items_ns.marshal_with(swagger_models.get("item"), code=200)
+@items_ns.response(404, "Not Found", swagger_models.get("error"))
 @app.route("/shopcarts/<int:customer_id>/items/<int:product_id>", methods=["GET"])
 def read_item_from_shopcart(customer_id, product_id):
     """Read an item from a shopcart"""
@@ -889,6 +978,11 @@ def list_items_in_shopcart(customer_id):
 ##############################################
 # SHOPCART TOTALS
 ##############################################
+@ns.route("/<int:customer_id>/totals", methods=["GET"])
+@ns.doc("get_shopcart_totals")
+@ns.param("customer_id", "The customer identifier")
+@ns.marshal_with(swagger_models.get("shopcart_totals"), code=200)
+@ns.response(404, "Not Found", swagger_models.get("error"))
 @app.route("/shopcarts/<int:customer_id>/totals", methods=["GET"])
 def get_shopcart_totals(customer_id: int):
     """Return aggregated totals for a customer's shopcart."""

@@ -21,6 +21,7 @@ and SQL database
 import sys
 
 from flask import Flask, current_app
+from flask_restx import Api
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -41,6 +42,16 @@ def create_app():
     # pylint: disable=import-outside-toplevel
     from service.models import db
     db.init_app(app)
+
+    # Initialize Swagger API
+    api = Api(
+        app,
+        version="1.0.0",
+        title="Shopcart REST API Service",
+        description="This service manages customer shopcarts and their items.",
+        doc="/apidocs/",
+    )
+    app.config["API"] = api
 
     with app.app_context():
         # Dependencies require we import the routes AFTER the Flask app is created
