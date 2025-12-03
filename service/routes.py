@@ -27,9 +27,199 @@ from datetime import datetime, timezone
 from dataclasses import dataclass
 from flask import jsonify, request, url_for, abort
 from flask import current_app as app  # Import Flask application
+from flask_restx import Api, Resource, fields, Namespace
 from sqlalchemy import func
 from service.models import Shopcart, ShopcartItem
 from service.common import status  # HTTP Status Codes
+
+# Initialize Flask-RESTX API (will be created when routes are imported)
+# This is done lazily to ensure app context is available
+def _get_api():
+    """Get or create the Flask-RESTX API instance."""
+    if not hasattr(app, "extensions") or "restx" not in app.extensions:
+        api = Api(
+            app,
+            version="1.0.0",
+            title="Shopcart REST API Service",
+            description="This service manages customer shopcarts and their items.",
+            doc="/apidocs/",
+        )
+    else:
+        api = app.extensions["restx"]["api"]
+    return api
+
+# Create API instance
+api = _get_api()
+
+# Create namespace for shopcart operations
+ns = Namespace("shopcarts", description="Shopcart operations")
+api.add_namespace(ns)
+
+######################################################################
+# Swagger Models
+######################################################################
+
+# Item Model for Swagger documentation
+item_model = api.model(
+    "Item",
+    {
+        "id": fields.Integer(
+            readOnly=True, description="The unique identifier for the item"
+        ),
+        "shopcart_id": fields.Integer(
+            readOnly=True, description="The shopcart ID this item belongs to"
+        ),
+        "product_id": fields.Integer(
+            required=True, description="The product ID", example=123
+        ),
+        "description": fields.String(
+            required=False, description="Item description", example="Widget"
+        ),
+        "quantity": fields.Integer(
+            required=True, description="Quantity of items", example=2, min=1, max=99
+        ),
+        "price": fields.Float(
+            required=True, description="Price per item", example=19.99
+        ),
+    },
+)
+
+# Item Create/Update Model (for request payloads)
+item_create_model = api.model(
+    "ItemCreate",
+    {
+        "product_id": fields.Integer(
+            required=True, description="The product ID", example=123
+        ),
+        "description": fields.String(
+            required=False, description="Item description", example="Widget"
+        ),
+        "quantity": fields.Integer(
+            required=True, description="Quantity of items", example=2, min=1, max=99
+        ),
+        "price": fields.Float(
+            required=False, description="Price per item (required for new items)", example=19.99
+        ),
+    },
+)
+
+# Shopcart Model for Swagger documentation
+shopcart_model = api.model(
+    "Shopcart",
+    {
+        "id": fields.Integer(
+            readOnly=True, description="The unique identifier for the shopcart"
+        ),
+        "customer_id": fields.Integer(
+            required=True, description="The customer ID", example=1
+        ),
+        "name": fields.String(
+            required=False, description="Shopcart name", example="My Cart"
+        ),
+        "created_date": fields.String(
+            readOnly=True, description="ISO8601 timestamp when shopcart was created"
+        ),
+        "last_modified": fields.String(
+            readOnly=True, description="ISO8601 timestamp when shopcart was last modified"
+        ),
+        "status": fields.String(
+            required=True,
+            description="Shopcart status",
+            example="active",
+            enum=["active", "abandoned", "locked", "expired"],
+        ),
+        "total_items": fields.Integer(
+            description="Total number of items in the shopcart", example=5
+        ),
+        "items": fields.List(
+            fields.Nested(item_model), description="List of items in the shopcart"
+        ),
+    },
+)
+
+# Shopcart Create Model (for request payloads)
+shopcart_create_model = api.model(
+    "ShopcartCreate",
+    {
+        "customer_id": fields.Integer(
+            required=True, description="The customer ID", example=1
+        ),
+        "name": fields.String(
+            required=False, description="Shopcart name", example="My Cart"
+        ),
+        "status": fields.String(
+            required=False,
+            description="Shopcart status (defaults to 'active')",
+            example="active",
+            enum=["active", "abandoned", "locked", "expired"],
+            default="active",
+        ),
+        "items": fields.List(
+            fields.Nested(item_create_model),
+            required=False,
+            description="Initial list of items (optional)",
+        ),
+    },
+)
+
+# Shopcart Update Model
+shopcart_update_model = api.model(
+    "ShopcartUpdate",
+    {
+        "status": fields.String(
+            required=False,
+            description="Shopcart status",
+            example="active",
+            enum=["active", "abandoned", "locked", "expired"],
+        ),
+        "items": fields.List(
+            fields.Nested(item_create_model),
+            required=False,
+            description="List of items to set",
+        ),
+    },
+)
+
+# Item Update Model
+item_update_model = api.model(
+    "ItemUpdate",
+    {
+        "quantity": fields.Integer(
+            required=False, description="Quantity of items", example=2, min=0, max=99
+        ),
+        "price": fields.Float(
+            required=False, description="Price per item", example=19.99
+        ),
+        "description": fields.String(
+            required=False, description="Item description", example="Widget"
+        ),
+    },
+)
+
+# Shopcart Totals Model
+shopcart_totals_model = api.model(
+    "ShopcartTotals",
+    {
+        "customer_id": fields.Integer(
+            description="The customer ID", example=1
+        ),
+        "item_count": fields.Integer(
+            description="Number of distinct items in the shopcart", example=3
+        ),
+        "total_quantity": fields.Integer(
+            description="Total quantity of all items", example=5
+        ),
+        "subtotal": fields.Float(
+            description="Subtotal before discount", example=99.95
+        ),
+        "discount": fields.Float(
+            description="Discount amount", example=0.0
+        ),
+        "total": fields.Float(
+            description="Total amount after discount", example=99.95
+        ),
+    },
+)
 
 
 def _require_product_id(payload):
@@ -283,6 +473,10 @@ def admin_ui():
 # CREATE A NEW SHOPCART
 ######################################################################
 @app.route("/shopcarts", methods=["POST"])
+@ns.expect(shopcart_create_model)
+@ns.marshal_with(shopcart_model, code=201)
+@ns.response(400, "Bad Request - Invalid data")
+@ns.response(409, "Conflict - Shopcart already exists for customer")
 def create_shopcarts():
     """
     Create a Shopcart
@@ -325,6 +519,8 @@ def create_shopcarts():
 # READ A SHOPCART (Customer)
 ######################################################################
 @app.route("/shopcarts/<int:customer_id>", methods=["GET"])
+@ns.marshal_with(shopcart_model)
+@ns.response(404, "Shopcart not found")
 def get_shopcarts(customer_id):
     """
     Retrieve a single Shopcart for the given customer
@@ -348,6 +544,8 @@ def get_shopcarts(customer_id):
 # DELETE A SHOPCART
 ######################################################################
 @app.route("/shopcarts/<int:customer_id>", methods=["DELETE"])
+@ns.response(204, "Shopcart deleted successfully")
+@ns.response(404, "Shopcart not found")
 def delete_shopcarts(customer_id):
     """
     Delete a Shopcart
@@ -396,6 +594,9 @@ def check_content_type(content_type) -> None:
 # UPDATE A SHOPCART
 ######################################################################
 @app.route("/shopcarts/<int:customer_id>", methods=["PUT", "PATCH"])
+@ns.expect(shopcart_update_model)
+@ns.marshal_with(shopcart_model)
+@ns.response(404, "Shopcart not found")
 def update_shopcart(customer_id: int):
     """
     Update the status of a shopcart
@@ -421,6 +622,8 @@ def update_shopcart(customer_id: int):
 # CHECKOUT A SHOPCART
 ######################################################################
 @app.route("/shopcarts/<int:customer_id>/checkout", methods=["PUT", "PATCH"])
+@ns.marshal_with(shopcart_model)
+@ns.response(404, "Shopcart not found")
 def checkout_shopcart(customer_id: int):
     """
     Change the status to "abandoned" and refresh last_modified.
@@ -441,6 +644,8 @@ def checkout_shopcart(customer_id: int):
 # CANCEL A SHOPCART
 ######################################################################
 @app.route("/shopcarts/<int:customer_id>/cancel", methods=["PATCH"])
+@ns.marshal_with(shopcart_model)
+@ns.response(404, "Shopcart not found")
 def cancel_shopcart(customer_id: int):
     """
     Mark the specified shopcart as abandoned.
@@ -465,6 +670,8 @@ def cancel_shopcart(customer_id: int):
 # LOCK A SHOPCART
 ######################################################################
 @app.route("/shopcarts/<int:customer_id>/lock", methods=["PATCH"])
+@ns.marshal_with(shopcart_model)
+@ns.response(404, "Shopcart not found")
 def lock_shopcart(customer_id: int):
     """
     Mark the specified shopcart as locked for downstream processing.
@@ -489,6 +696,8 @@ def lock_shopcart(customer_id: int):
 # EXPIRE A SHOPCART
 ######################################################################
 @app.route("/shopcarts/<int:customer_id>/expire", methods=["PATCH"])
+@ns.marshal_with(shopcart_model)
+@ns.response(404, "Shopcart not found")
 def expire_shopcart(customer_id: int):
     """
     Mark the specified shopcart as expired and no longer actionable.
@@ -513,6 +722,8 @@ def expire_shopcart(customer_id: int):
 # REACTIVATE A SHOPCART
 ######################################################################
 @app.route("/shopcarts/<int:customer_id>/reactivate", methods=["PATCH"])
+@ns.marshal_with(shopcart_model)
+@ns.response(404, "Shopcart not found")
 def reactivate_shopcart(customer_id: int):
     """
     Reactivate an abandoned shopcart.
@@ -539,6 +750,10 @@ def reactivate_shopcart(customer_id: int):
 @app.route(
     "/shopcarts/<int:customer_id>/items/<int:product_id>", methods=["PUT", "PATCH"]
 )
+@ns.expect(item_update_model)
+@ns.marshal_with(shopcart_model)
+@ns.response(404, "Shopcart or Item not found")
+@ns.response(409, "Conflict - Cannot update items on abandoned shopcart")
 def update_shopcart_item(customer_id: int, product_id: int):
     """
     Update a single item in a shopcart
@@ -601,6 +816,7 @@ def update_shopcart_item(customer_id: int, product_id: int):
 # LIST ALL SHOPCARTS
 ######################################################################
 @app.route("/shopcarts", methods=["GET"])
+@ns.marshal_list_with(shopcart_model)
 def list_shopcarts():
     """
     Retrieve Shopcarts, optionally filtered by status and customer_id.
@@ -647,6 +863,10 @@ def list_shopcarts():
 # CREATE A NEW SHOPCART ITEM
 ######################################################################
 @app.route("/shopcarts/<int:customer_id>/items", methods=["POST"])
+@ns.expect(item_create_model)
+@ns.marshal_with(item_model, code=201)
+@ns.response(404, "Shopcart not found")
+@ns.response(400, "Bad Request - Invalid data")
 def add_item_to_shopcart(customer_id):
     """Add an Item to a Shopcart"""
     app.logger.info("Request to add item to shopcart for customer %s", customer_id)
@@ -695,6 +915,8 @@ def add_item_to_shopcart(customer_id):
 # READ AN ITEM FROM SHOPCART
 ######################################################################
 @app.route("/shopcarts/<int:customer_id>/items/<int:product_id>", methods=["GET"])
+@ns.marshal_with(item_model)
+@ns.response(404, "Shopcart or Item not found")
 def read_item_from_shopcart(customer_id, product_id):
     """Read an item from a shopcart"""
     app.logger.info(
@@ -726,6 +948,8 @@ def read_item_from_shopcart(customer_id, product_id):
 # DELETE AN ITEM FROM SHOPCART
 ##############################################
 @app.route("/shopcarts/<int:customer_id>/items/<int:product_id>", methods=["DELETE"])
+@ns.response(204, "Item deleted successfully")
+@ns.response(404, "Shopcart or Item not found")
 def delete_item_from_shopcart(customer_id, product_id):
     """Delete an existing item from a shopcart"""
     app.logger.info(
@@ -856,6 +1080,8 @@ def _parse_item_filters(args) -> ItemFilters:
 
 
 @app.route("/shopcarts/<int:customer_id>/items", methods=["GET"])
+@ns.marshal_list_with(item_model)
+@ns.response(404, "Shopcart not found")
 def list_items_in_shopcart(customer_id):
     """List all items in a customer's shopcart"""
     app.logger.info(f"Request to list all items in shopcart of customer {customer_id}")
@@ -890,6 +1116,8 @@ def list_items_in_shopcart(customer_id):
 # SHOPCART TOTALS
 ##############################################
 @app.route("/shopcarts/<int:customer_id>/totals", methods=["GET"])
+@ns.marshal_with(shopcart_totals_model)
+@ns.response(404, "Shopcart not found")
 def get_shopcart_totals(customer_id: int):
     """Return aggregated totals for a customer's shopcart."""
     app.logger.info(

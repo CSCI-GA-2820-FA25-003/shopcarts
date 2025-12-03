@@ -43,7 +43,11 @@ def create_app():
     db.init_app(app)
 
     with app.app_context():
+        # Configure Flask-RESTX
+        app.config["RESTX_MASK_SWAGGER"] = False
+
         # Dependencies require we import the routes AFTER the Flask app is created
+        # Flask-RESTX API will be initialized in routes.py
         # pylint: disable=wrong-import-position, wrong-import-order, unused-import
         from service import routes, models  # noqa: F401 E402
         from service.common import error_handlers, cli_commands  # noqa: F401, E402
