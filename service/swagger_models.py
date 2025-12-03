@@ -13,7 +13,7 @@ def create_swagger_models(api_instance):
     """Create and register all Swagger models with the API instance."""
 
     # Define Item model
-    item_model = api.model(
+    item_model = api_instance.model(
         "Item",
         {
             "id": fields.Integer(
@@ -56,7 +56,7 @@ def create_swagger_models(api_instance):
     )
 
     # Define Item creation model (without id and shopcart_id)
-    item_create_model = api.model(
+    item_create_model = api_instance.model(
         "ItemCreate",
         {
             "product_id": fields.Integer(
@@ -87,7 +87,7 @@ def create_swagger_models(api_instance):
     )
 
     # Define Item update model
-    item_update_model = api.model(
+    item_update_model = api_instance.model(
         "ItemUpdate",
         {
             "quantity": fields.Integer(
@@ -113,7 +113,7 @@ def create_swagger_models(api_instance):
     )
 
     # Define Shopcart model
-    shopcart_model = api.model(
+    shopcart_model = api_instance.model(
         "Shopcart",
         {
             "id": fields.Integer(
@@ -166,7 +166,7 @@ def create_swagger_models(api_instance):
     )
 
     # Define Shopcart creation model
-    shopcart_create_model = api.model(
+    shopcart_create_model = api_instance.model(
         "ShopcartCreate",
         {
             "customer_id": fields.Integer(
@@ -196,7 +196,7 @@ def create_swagger_models(api_instance):
     )
 
     # Define Shopcart update model
-    shopcart_update_model = api.model(
+    shopcart_update_model = api_instance.model(
         "ShopcartUpdate",
         {
             "status": fields.String(
@@ -214,7 +214,7 @@ def create_swagger_models(api_instance):
     )
 
     # Define Shopcart totals model
-    shopcart_totals_model = api.model(
+    shopcart_totals_model = api_instance.model(
         "ShopcartTotals",
         {
             "customer_id": fields.Integer(
@@ -251,7 +251,7 @@ def create_swagger_models(api_instance):
     )
 
     # Define error model
-    error_model = api.model(
+    error_model = api_instance.model(
         "Error",
         {
             "error": fields.String(
