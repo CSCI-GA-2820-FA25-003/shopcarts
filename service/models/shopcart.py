@@ -57,27 +57,6 @@ class Shopcart(CRUDMixin, db.Model):
         lazy=True,
     )
 
-    ##################################################
-    __tablename__ = "shopcarts"
-
-    id = db.Column(db.Integer, primary_key=True)
-    customer_id = db.Column(db.Integer, nullable=False, unique=True)
-    name = db.Column(db.String(120))
-    created_date = db.Column(db.DateTime(), nullable=False, default=datetime.utcnow)
-    last_modified = db.Column(
-        db.DateTime(), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
-    )
-    status = db.Column(db.String(20), nullable=False, default="active")
-    total_items = db.Column(db.Integer, default=0)
-
-    # Relationship: One Shopcart has many ShopcartItems
-    items = db.relationship(
-        "ShopcartItem",
-        backref="shopcart",
-        cascade="all, delete-orphan",
-        lazy=True,
-    )
-
     def __repr__(self):
         return f"<Shopcart customer_id={self.customer_id} id=[{self.id}]>"
 

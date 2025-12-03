@@ -36,6 +36,7 @@ from service.common import status  # HTTP Status Codes
 # This is done lazily to ensure app context is available
 def _get_api():
     """Get or create the Flask-RESTX API instance."""
+    # pylint: disable=no-member,used-before-assignment
     if not hasattr(app, "extensions") or "restx" not in app.extensions:
         api = Api(
             app,
@@ -48,8 +49,9 @@ def _get_api():
         api = app.extensions["restx"]["api"]
     return api
 
-# Create API instance
-api = _get_api()
+# Create API instance (initialized when module is imported within app context)
+# Routes are imported within app.app_context() in service/__init__.py
+api = _get_api()  # pylint: disable=used-before-assignment
 
 # Create namespace for shopcart operations
 ns = Namespace("shopcarts", description="Shopcart operations")

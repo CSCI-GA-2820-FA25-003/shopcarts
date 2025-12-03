@@ -34,19 +34,6 @@ class ShopcartItem(CRUDMixin, db.Model):
     quantity = db.Column(db.Integer, nullable=False, default=1)
     price = db.Column(db.Numeric(10, 2), nullable=False)
 
-    __tablename__ = "shopcart_items"
-
-    id = db.Column(db.Integer, primary_key=True)
-    shopcart_id = db.Column(
-        db.Integer,
-        db.ForeignKey("shopcarts.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    product_id = db.Column(db.Integer, nullable=False)
-    description = db.Column(db.String(256))
-    quantity = db.Column(db.Integer, nullable=False, default=1)
-    price = db.Column(db.Numeric(10, 2), nullable=False)
-
     def __repr__(self):
         return (
             f"<ShopcartItem id=[{self.id}] "
