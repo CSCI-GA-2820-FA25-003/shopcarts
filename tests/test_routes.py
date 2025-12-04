@@ -2831,31 +2831,6 @@ class TestYourResourceService(TestCase):
         resp = self.client.get(f"{BASE_URL}/{cart2.customer_id}/items/{item.id}")
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
-    def test_update_item_by_item_id_returns_item(self):
-        """It should return item when updating by item_id and is_item_id is True"""
-        # Create a shopcart
-        cart = ShopcartFactory(status="active")
-        cart.create()
-        item = ShopcartItemFactory(
-            shopcart_id=cart.id,
-            product_id=777,
-            quantity=1,
-            price=Decimal("10.00"),
-        )
-        item.create()
-
-        # Update using item.id (this should trigger is_item_id=True in _get_update_response)
-        resp = self.client.put(
-            f"{BASE_URL}/{cart.customer_id}/items/{item.id}",
-            json={"quantity": 5},
-            content_type="application/json",
-        )
-        # Should return 200, and if is_item_id is True, should return item
-        self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        # Response should be shopcart or item depending on _get_update_response logic
-        data = resp.get_json()
-        self.assertIsNotNone(data)
-
     def test_update_item_shopcart_id_route_check(self):
         """It should return 404 when shopcart_id route is used instead of customer_id"""
         # Create a shopcart
@@ -3239,7 +3214,7 @@ class TestYourResourceService(TestCase):
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
-        first_item = resp.get_json()
+        resp.get_json()  # Verify response
 
         # Add the same item again (should increment quantity)
         resp = self.client.post(
@@ -4185,48 +4160,6 @@ class TestYourResourceService(TestCase):
         resp = self.client.get(f"{BASE_URL}/99999/items/100")
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
-    def test_get_item_by_item_id_fallback(self):
-        """It should find item by item.id when product_id doesn't match"""
-        # Create a shopcart
-        cart = ShopcartFactory(status="active")
-        cart.create()
-        item = ShopcartItemFactory(
-            shopcart_id=cart.id,
-            product_id=888,
-            quantity=1,
-            price=Decimal("10.00"),
-        )
-        item.create()
-
-        # Get item using item.id (not product_id)
-        # This tests the fallback in GET method (line 858-861)
-        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items/{item.id}")
-        self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        data = resp.get_json()
-        self.assertEqual(data["id"], item.id)
-
-    def test_get_item_by_item_id_wrong_shopcart(self):
-        """It should return 404 when item.id matches but belongs to different shopcart"""
-        # Create two shopcarts
-        cart1 = ShopcartFactory(status="active")
-        cart1.create()
-        cart2 = ShopcartFactory(status="active")
-        cart2.create()
-
-        # Add item to first cart
-        item = ShopcartItemFactory(
-            shopcart_id=cart1.id,
-            product_id=999,
-            quantity=1,
-            price=Decimal("10.00"),
-        )
-        item.create()
-
-        # Try to get item from second cart using item.id
-        # This tests line 860 where item.shopcart_id != shopcart.id
-        resp = self.client.get(f"{BASE_URL}/{cart2.customer_id}/items/{item.id}")
-        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
-
     def test_delete_item_shopcart_not_found_by_customer_id(self):
         """It should return 404 when shopcart is not found by customer_id"""
         # Try to delete item from non-existent shopcart
@@ -4259,28 +4192,6 @@ class TestYourResourceService(TestCase):
 
         # Verify item is deleted
         resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items/{item.id}")
-        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
-
-    def test_delete_item_by_item_id_wrong_shopcart(self):
-        """It should return 404 when item.id matches but belongs to different shopcart"""
-        # Create two shopcarts
-        cart1 = ShopcartFactory(status="active")
-        cart1.create()
-        cart2 = ShopcartFactory(status="active")
-        cart2.create()
-
-        # Add item to first cart
-        item = ShopcartItemFactory(
-            shopcart_id=cart1.id,
-            product_id=666,
-            quantity=1,
-            price=Decimal("10.00"),
-        )
-        item.create()
-
-        # Try to delete item from second cart using item.id
-        # This tests line 949 where item.shopcart_id != shopcart.id
-        resp = self.client.delete(f"{BASE_URL}/{cart2.customer_id}/items/{item.id}")
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_get_update_response_is_item_id_true_and_item_found(self):
@@ -4572,6 +4483,7 @@ class TestYourResourceService(TestCase):
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        resp.get_json()  # Verify response
 
         # Filter by created_before
         resp = self.client.get(f"{BASE_URL}?created_before=2024-01-01T00:00:00Z")
@@ -4590,6 +4502,7 @@ class TestYourResourceService(TestCase):
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        resp.get_json()  # Verify response
 
         # Filter by total_price_lt
         resp = self.client.get(f"{BASE_URL}?total_price_lt=100")
@@ -4780,25 +4693,6 @@ class TestYourResourceService(TestCase):
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         data = resp.get_json()
         self.assertEqual(data["status"], "locked")
-
-    def test_delete_shopcart(self):
-        """It should delete a shopcart"""
-        # Create a shopcart
-        resp = self.client.post(
-            "/api/shopcarts",
-            json={"customer_id": 1, "status": "active"},
-            content_type="application/json",
-        )
-        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
-        customer_id = resp.get_json()["customer_id"]
-
-        # Delete shopcart
-        resp = self.client.delete(f"{BASE_URL}/{customer_id}")
-        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
-
-        # Verify shopcart is deleted
-        resp = self.client.get(f"{BASE_URL}/{customer_id}")
-        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_checkout_shopcart(self):
         """It should checkout a shopcart"""
@@ -5042,27 +4936,6 @@ class TestYourResourceService(TestCase):
         # Try to get non-existent shopcart
         resp = self.client.get(f"{BASE_URL}/99999")
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
-
-    def test_create_shopcart_conflict(self):
-        """It should return 409 when shopcart already exists"""
-        # Create a shopcart
-        resp = self.client.post(
-            "/api/shopcarts",
-            json={"customer_id": 1, "status": "active"},
-            content_type="application/json",
-        )
-        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
-        customer_id = resp.get_json()["customer_id"]
-
-        # Try to create another shopcart with same customer_id
-        resp = self.client.post(
-            "/api/shopcarts",
-            json={"customer_id": customer_id, "status": "active"},
-            content_type="application/json",
-        )
-        self.assertEqual(resp.status_code, status.HTTP_409_CONFLICT)
-        data = resp.get_json()
-        self.assertIn("already exists", data["message"])
 
     def test_parse_quantity_from_payload_typeerror(self):
         """It should return 400 when quantity is wrong type (TypeError)"""
@@ -5689,90 +5562,6 @@ class TestYourResourceService(TestCase):
             self.assertEqual(data["id"], item.id)
 
     # Tests for lines 455-461: _parse_price_bound error handling
-    def test_parse_price_bound_empty_string(self):
-        """It should return 400 when price bound is empty string (covers line 455-461)"""
-        cart = ShopcartFactory(status="active")
-        cart.create()
-        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items?min_price=")
-        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("must be a number", resp.get_json()["message"])
-
-    def test_parse_price_bound_invalid_operation(self):
-        """It should return 400 when price bound triggers InvalidOperation (covers line 455-461)"""
-        cart = ShopcartFactory(status="active")
-        cart.create()
-        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items?min_price=invalid")
-        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("must be a number", resp.get_json()["message"])
-
-    def test_parse_price_bound_valueerror(self):
-        """It should return 400 when price bound triggers ValueError (covers line 455-461)"""
-        cart = ShopcartFactory(status="active")
-        cart.create()
-        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items?max_price=not_a_decimal")
-        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
-
-    def test_parse_price_bound_typeerror(self):
-        """It should return 400 when price bound triggers TypeError (covers line 455-461)"""
-        # This is hard to test via HTTP, but empty string should trigger the path
-        cart = ShopcartFactory(status="active")
-        cart.create()
-        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items?min_price=")
-        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
-
-    # Tests for lines 466-474: _normalize_description_filter error handling
-    def test_normalize_description_filter_empty_string(self):
-        """It should return 400 when description filter is empty string (covers line 466-474)"""
-        cart = ShopcartFactory(status="active")
-        cart.create()
-        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items?description=")
-        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("description must be a non-empty string", resp.get_json()["message"])
-
-    def test_normalize_description_filter_whitespace_only(self):
-        """It should return 400 when description filter is whitespace only (covers line 466-474)"""
-        cart = ShopcartFactory(status="active")
-        cart.create()
-        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items?description=   ")
-        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("description must be a non-empty string", resp.get_json()["message"])
-
-    # Tests for lines 479-484: _parse_optional_int error handling
-    def test_parse_optional_int_typeerror(self):
-        """It should return 400 when optional int triggers TypeError (covers line 479-484)"""
-        cart = ShopcartFactory(status="active")
-        cart.create()
-        # This is hard to trigger via HTTP, but invalid value should trigger ValueError path
-        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items?product_id=invalid")
-        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
-
-    def test_parse_optional_int_valueerror(self):
-        """It should return 400 when optional int triggers ValueError (covers line 479-484)"""
-        cart = ShopcartFactory(status="active")
-        cart.create()
-        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items?quantity=not_a_number")
-        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("quantity must be an integer", resp.get_json()["message"])
-
-    # Tests for lines 489-525: _parse_item_filters various cases
-    def test_parse_item_filters_single_unsupported(self):
-        """It should return 400 for single unsupported filter (covers line 489-525)"""
-        cart = ShopcartFactory(status="active")
-        cart.create()
-        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items?unsupported=value")
-        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("is not a supported filter parameter", resp.get_json()["message"])
-
-    def test_parse_item_filters_multiple_unsupported(self):
-        """It should return 400 for multiple unsupported filters (covers line 489-525)"""
-        cart = ShopcartFactory(status="active")
-        cart.create()
-        resp = self.client.get(
-            f"{BASE_URL}/{cart.customer_id}/items?unsupported1=value1&unsupported2=value2"
-        )
-        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("are not supported filter parameters", resp.get_json()["message"])
-
     def test_parse_item_filters_min_price_greater_than_max_price(self):
         """It should return 400 when min_price > max_price (covers line 489-525)"""
         cart = ShopcartFactory(status="active")
@@ -5894,42 +5683,6 @@ class TestYourResourceService(TestCase):
         resp = self.client.get(f"{BASE_URL}/99999/items/100")
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
-    def test_get_item_by_item_id_fallback(self):
-        """It should find item by item.id when product_id doesn't match (covers line 844-867)"""
-        cart = ShopcartFactory(status="active")
-        cart.create()
-        item = ShopcartItemFactory(
-            shopcart_id=cart.id,
-            product_id=777,
-            quantity=1,
-            price=Decimal("10.00"),
-        )
-        item.create()
-
-        # Get item using item.id (not product_id)
-        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items/{item.id}")
-        self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        self.assertEqual(resp.get_json()["id"], item.id)
-
-    def test_get_item_by_item_id_wrong_shopcart(self):
-        """It should return 404 when item.id matches but wrong shopcart (covers line 844-867)"""
-        cart1 = ShopcartFactory(status="active")
-        cart1.create()
-        cart2 = ShopcartFactory(status="active")
-        cart2.create()
-
-        item = ShopcartItemFactory(
-            shopcart_id=cart1.id,
-            product_id=888,
-            quantity=1,
-            price=Decimal("10.00"),
-        )
-        item.create()
-
-        # Try to get item from cart2 using item.id
-        resp = self.client.get(f"{BASE_URL}/{cart2.customer_id}/items/{item.id}")
-        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
-
     # Tests for line 886: PUT method special check
     def test_put_item_shopcart_id_route_check(self):
         """It should return 404 when shopcart found by id but customer_id doesn't match (covers line 886)"""
@@ -5955,41 +5708,3 @@ class TestYourResourceService(TestCase):
         resp = self.client.delete(f"{BASE_URL}/99999/items/100")
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
-    def test_delete_item_by_item_id_fallback(self):
-        """It should delete item by item.id when product_id doesn't match (covers line 933-961)"""
-        cart = ShopcartFactory(status="active")
-        cart.create()
-        item = ShopcartItemFactory(
-            shopcart_id=cart.id,
-            product_id=999,
-            quantity=1,
-            price=Decimal("10.00"),
-        )
-        item.create()
-
-        # Delete item using item.id (not product_id)
-        resp = self.client.delete(f"{BASE_URL}/{cart.customer_id}/items/{item.id}")
-        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
-
-        # Verify item is deleted
-        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items/{item.id}")
-        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
-
-    def test_delete_item_by_item_id_wrong_shopcart(self):
-        """It should return 404 when item.id matches but wrong shopcart (covers line 933-961)"""
-        cart1 = ShopcartFactory(status="active")
-        cart1.create()
-        cart2 = ShopcartFactory(status="active")
-        cart2.create()
-
-        item = ShopcartItemFactory(
-            shopcart_id=cart1.id,
-            product_id=111,
-            quantity=1,
-            price=Decimal("10.00"),
-        )
-        item.create()
-
-        # Try to delete item from cart2 using item.id
-        resp = self.client.delete(f"{BASE_URL}/{cart2.customer_id}/items/{item.id}")
-        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)

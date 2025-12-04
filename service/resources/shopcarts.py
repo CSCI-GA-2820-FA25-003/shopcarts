@@ -875,7 +875,7 @@ class ShopcartItemResource(Resource):
         """Update a single item in a shopcart."""
         # First try to find by customer_id
         shopcart = Shopcart.find_by_customer_id(customer_id).first()
-        
+
         # If not found by customer_id, try by shopcart.id
         # But if found by shopcart.id and customer_id doesn't match, this is a shopcart_id route
         if not shopcart:
@@ -887,13 +887,13 @@ class ShopcartItemResource(Resource):
                     status.HTTP_404_NOT_FOUND,
                     message=f"Shopcart for customer '{customer_id}' was not found.",
                 )
-        
+
         if not shopcart:
             abort(
                 status.HTTP_404_NOT_FOUND,
                 message=f"Shopcart for customer '{customer_id}' was not found.",
             )
-        
+
         check_content_type("application/json")
         payload = request.get_json() or {}
 

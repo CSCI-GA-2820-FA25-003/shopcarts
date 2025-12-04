@@ -485,19 +485,18 @@ class ItemResource(Resource):
                 _parse_price_from_payload,
                 _validate_shopcart_status_for_update,
                 _update_shopcart_item,
-                _get_update_response,
                 _check_if_product_id_is_item_id,
                 _handle_zero_quantity_update,
                 check_content_type,
             )
             from service.common import status as http_status
-            
+
             shopcart = shopcart_by_customer
             check_content_type("application/json")
             payload = request.get_json() or {}
-            
+
             _validate_shopcart_status_for_update(shopcart)
-            
+
             # item_id might be product_id in this case
             current = _find_item_by_product_or_id(shopcart, item_id)
             if current is None:
@@ -505,15 +504,14 @@ class ItemResource(Resource):
                     http_status.HTTP_404_NOT_FOUND,
                     f"Item with product_id '{item_id}' not found in this shopcart.",
                 )
-            
+
             q = _parse_quantity_from_payload(payload, current)
             if q == 0:
                 return _handle_zero_quantity_update(shopcart, current)
-            
+
             price = _parse_price_from_payload(payload, current)
             desc = payload.get("description", current.description or "")
-            is_item_id = _check_if_product_id_is_item_id(item_id)
-            
+
             _update_shopcart_item(shopcart, current, q, price, desc)
             # For customer_id routes, always return shopcart (not item)
             return shopcart.serialize(), http_status.HTTP_200_OK
@@ -546,7 +544,7 @@ class ItemResource(Resource):
             # Fallback to the original item if not found in items list
             updated_item = item
             db.session.refresh(updated_item)
-        
+
         return updated_item.serialize(), status.HTTP_200_OK
 
     @api.doc("delete_item")
