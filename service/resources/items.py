@@ -150,6 +150,66 @@ def _parse_optional_int(args, field: str, error_message: str) -> int | None:
         abort(status.HTTP_400_BAD_REQUEST, error_message)
 
 
+def _validate_shopcart_and_item(shopcart_id, item_id):
+    """Validate shopcart and item exist and item belongs to shopcart."""
+    shopcart = Shopcart.find(shopcart_id)
+    if not shopcart:
+        abort(
+            status.HTTP_404_NOT_FOUND,
+            f"Shopcart with id '{shopcart_id}' was not found.",
+        )
+
+    item = ShopcartItem.find(item_id)
+    if not item:
+        abort(
+            status.HTTP_404_NOT_FOUND,
+            f"Item with id '{item_id}' was not found.",
+        )
+
+    if item.shopcart_id != shopcart.id:
+        abort(
+            status.HTTP_404_NOT_FOUND,
+            f"Item with id '{item_id}' not found in shopcart '{shopcart_id}'.",
+        )
+
+    return shopcart, item
+
+
+def _check_shopcart_status(shopcart):
+    """Check if shopcart status allows updates."""
+    status_norm = (
+        shopcart.status.strip().lower()
+        if isinstance(shopcart.status, str)
+        else "active"
+    )
+    if status_norm == "abandoned":
+        abort(
+            status.HTTP_409_CONFLICT,
+            "Cannot update items on an abandoned shopcart.",
+        )
+
+
+def _parse_quantity_for_update(payload, item):
+    """Parse and validate quantity from update payload."""
+    q_raw = payload.get("quantity", item.quantity)
+    try:
+        q = int(q_raw)
+    except (TypeError, ValueError):
+        abort(status.HTTP_400_BAD_REQUEST, "quantity must be an integer.")
+    if q < 0 or q > 99:
+        abort(status.HTTP_400_BAD_REQUEST, "invalid quantity")
+    return q
+
+
+def _parse_price_for_update(payload, item):
+    """Parse and validate price from update payload."""
+    price_raw = payload.get("price", float(item.price))
+    try:
+        return Decimal(str(price_raw))
+    except (decimal.InvalidOperation, ValueError, TypeError):
+        abort(status.HTTP_400_BAD_REQUEST, "price is invalid.")
+
+
 @dataclass
 class ItemFilters:
     """Container for shopcart item filters."""
@@ -182,7 +242,7 @@ def _parse_item_filters(args) -> ItemFilters:
 
     filters = ItemFilters()
     filters.description = _normalize_description_filter(args.get("description"))
-    
+
     # Handle sku as alias for product_id (both should be integers)
     product_id_raw = args.get("product_id") or args.get("sku")
     if product_id_raw:
@@ -191,7 +251,7 @@ def _parse_item_filters(args) -> ItemFilters:
             "product_id",
             "product_id (or sku) must be an integer",
         )
-    
+
     filters.quantity = _parse_optional_int(
         args, "quantity", "quantity must be an integer"
     )
@@ -251,14 +311,14 @@ class ItemCollection(Resource):
 
         filters = _parse_item_filters(request.args)
         query = ShopcartItem.find_by_shopcart_id(shopcart.id)
-        
+
         # Apply shopcart status filter if provided
         if filters.status is not None:
             status_norm = str(filters.status).strip().lower()
             if status_norm != shopcart.status.lower():
                 # Return empty list if shopcart status doesn't match
                 return [], status.HTTP_200_OK
-        
+
         if filters.description is not None:
             query = query.filter(ShopcartItem.description.ilike(f"%{filters.description}%"))
         if filters.product_id is not None:
@@ -284,7 +344,7 @@ class ItemCollection(Resource):
     def post(self, shopcart_id):
         """Add an Item to a Shopcart"""
         app.logger.info("Request to add item to shopcart %s", shopcart_id)
-        
+
         # Find the shopcart by ID
         shopcart = Shopcart.find(shopcart_id)
         if not shopcart:
@@ -379,69 +439,24 @@ class ItemResource(Resource):
             f"Request to update item {item_id} in shopcart {shopcart_id}"
         )
 
-        # Find the shopcart by ID
-        shopcart = Shopcart.find(shopcart_id)
-        if not shopcart:
-            abort(
-                status.HTTP_404_NOT_FOUND,
-                f"Shopcart with id '{shopcart_id}' was not found.",
-            )
-
-        # Find the item by ID
-        item = ShopcartItem.find(item_id)
-        if not item:
-            abort(
-                status.HTTP_404_NOT_FOUND,
-                f"Item with id '{item_id}' was not found.",
-            )
-
-        # Verify the item belongs to this shopcart
-        if item.shopcart_id != shopcart.id:
-            abort(
-                status.HTTP_404_NOT_FOUND,
-                f"Item with id '{item_id}' not found in shopcart '{shopcart_id}'.",
-            )
-
-        status_norm = (
-            shopcart.status.strip().lower()
-            if isinstance(shopcart.status, str)
-            else "active"
-        )
-        if status_norm == "abandoned":
-            abort(
-                status.HTTP_409_CONFLICT,
-                "Cannot update items on an abandoned shopcart.",
-            )
+        shopcart, item = _validate_shopcart_and_item(shopcart_id, item_id)
+        _check_shopcart_status(shopcart)
 
         payload = request.get_json() or {}
-
-        q_raw = payload.get("quantity", item.quantity)
-        try:
-            q = int(q_raw)
-        except (TypeError, ValueError):
-            abort(status.HTTP_400_BAD_REQUEST, "quantity must be an integer.")
-        if q < 0 or q > 99:
-            abort(status.HTTP_400_BAD_REQUEST, "invalid quantity")
+        q = _parse_quantity_for_update(payload, item)
 
         if q == 0:
             shopcart.remove_item(item.product_id)
             shopcart.update()
-            # Item deleted, return 204 No Content
             return "", status.HTTP_204_NO_CONTENT
 
-        price_raw = payload.get("price", float(item.price))
-        try:
-            price = Decimal(str(price_raw))
-        except (decimal.InvalidOperation, ValueError, TypeError):
-            abort(status.HTTP_400_BAD_REQUEST, "price is invalid.")
-
+        price = _parse_price_for_update(payload, item)
         desc = payload.get("description", item.description or "")
         shopcart.upsert_item(
             product_id=item.product_id, quantity=q, price=price, description=desc
         )
         shopcart.update()
 
-        # Fetch updated item
         updated_item = ShopcartItem.find(item_id)
         if not updated_item:
             abort(
@@ -494,4 +509,3 @@ class ItemResource(Resource):
         )
 
         return "", status.HTTP_204_NO_CONTENT
-
