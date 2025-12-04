@@ -1,6 +1,7 @@
 """
 Item Resource for Flask-RESTX
 """
+
 import decimal
 from decimal import Decimal
 from datetime import datetime
@@ -10,9 +11,31 @@ from flask_restx import Resource, Namespace, fields, abort
 
 from service.models import Shopcart, ShopcartItem, db
 from service.common import status
+from service.routes import check_content_type
+
+# Import shopcarts functions for delegation (imported here to avoid circular imports)
+try:
+    from service.resources.shopcarts import (
+        _find_item_by_product_or_id,
+        _parse_quantity_from_payload,
+        _parse_price_from_payload,
+        _validate_shopcart_status_for_update,
+        _update_shopcart_item,
+        _handle_zero_quantity_update,
+    )
+except ImportError:
+    # Fallback if shopcarts module is not available
+    _find_item_by_product_or_id = None
+    _parse_quantity_from_payload = None
+    _parse_price_from_payload = None
+    _validate_shopcart_status_for_update = None
+    _update_shopcart_item = None
+    _handle_zero_quantity_update = None
 
 # Create a namespace for items
-api = Namespace("items", description="Item operations", path="/shopcarts/<int:shopcart_id>/items")
+api = Namespace(
+    "items", description="Item operations", path="/shopcarts/<int:shopcart_id>/items"
+)
 
 ######################################################################
 # Swagger Models
@@ -36,8 +59,12 @@ item_create_model = api.model(
     "ItemCreate",
     {
         "product_id": fields.Integer(required=True, description="The product ID"),
-        "quantity": fields.Integer(required=True, description="Item quantity (must be positive)"),
-        "price": fields.Float(required=False, description="Item price (required if item doesn't exist)"),
+        "quantity": fields.Integer(
+            required=True, description="Item quantity (must be positive)"
+        ),
+        "price": fields.Float(
+            required=False, description="Item price (required if item doesn't exist)"
+        ),
         "description": fields.String(required=False, description="Item description"),
     },
 )
@@ -46,7 +73,9 @@ item_create_model = api.model(
 item_update_model = api.model(
     "ItemUpdate",
     {
-        "quantity": fields.Integer(required=False, description="Item quantity (0-99, 0 deletes item)"),
+        "quantity": fields.Integer(
+            required=False, description="Item quantity (0-99, 0 deletes item)"
+        ),
         "price": fields.Float(required=False, description="Item price"),
         "description": fields.String(required=False, description="Item description"),
     },
@@ -74,6 +103,7 @@ item_list_model = api.model(
 ######################################################################
 # Helper Functions
 ######################################################################
+
 
 def _require_product_id(payload):
     """Extract and validate product_id from payload."""
@@ -241,7 +271,15 @@ class ItemFilters:
     status: str | None = None  # Filter by shopcart status (not item status)
 
 
-ITEM_FILTER_FIELDS = {"description", "product_id", "min_price", "max_price", "quantity", "sku", "status"}
+ITEM_FILTER_FIELDS = {
+    "description",
+    "product_id",
+    "min_price",
+    "max_price",
+    "quantity",
+    "sku",
+    "status",
+}
 
 
 def _parse_item_filters(args) -> ItemFilters:
@@ -308,7 +346,9 @@ class ItemCollection(Resource):
     @api.doc("list_items")
     @api.param("description", "Filter by description (partial match)", type="string")
     @api.param("product_id", "Filter by product ID", type="integer")
-    @api.param("sku", "Filter by SKU (alias for product_id, must be integer)", type="integer")
+    @api.param(
+        "sku", "Filter by SKU (alias for product_id, must be integer)", type="integer"
+    )
     @api.param("status", "Filter by shopcart status", type="string")
     @api.param("quantity", "Filter by quantity", type="integer")
     @api.param("min_price", "Filter by minimum price", type="number")
@@ -342,7 +382,9 @@ class ItemCollection(Resource):
                 return [], status.HTTP_200_OK
 
         if filters.description is not None:
-            query = query.filter(ShopcartItem.description.ilike(f"%{filters.description}%"))
+            query = query.filter(
+                ShopcartItem.description.ilike(f"%{filters.description}%")
+            )
         if filters.product_id is not None:
             query = query.filter(ShopcartItem.product_id == filters.product_id)
         if filters.quantity is not None:
@@ -418,14 +460,62 @@ class ItemCollection(Resource):
 class ItemResource(Resource):
     """Handles all operations for a single Item"""
 
+    def _handle_customer_id_route_update(self, shopcart, item_id):
+        """Handle update when shopcart_id is actually a customer_id."""
+        if _find_item_by_product_or_id is None:
+            abort(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "Shopcarts module functions not available.",
+            )
+        check_content_type("application/json")
+        payload = request.get_json() or {}
+        _validate_shopcart_status_for_update(shopcart)
+        current = _find_item_by_product_or_id(shopcart, item_id)
+        if current is None:
+            abort(
+                status.HTTP_404_NOT_FOUND,
+                f"Item with product_id '{item_id}' not found in this shopcart.",
+            )
+        quantity = _parse_quantity_from_payload(payload, current)
+        if quantity == 0:
+            return _handle_zero_quantity_update(shopcart, current)
+        price = _parse_price_from_payload(payload, current)
+        description = payload.get("description", current.description or "")
+        _update_shopcart_item(shopcart, current, quantity, price, description)
+        return shopcart.serialize(), status.HTTP_200_OK
+
+    def _handle_shopcart_id_route_update(self, shopcart, item, payload):
+        """Handle update for regular shopcart_id route."""
+        _check_shopcart_status(shopcart)
+        quantity = _parse_quantity_for_update(payload, item)
+        if quantity == 0:
+            shopcart.remove_item(item.product_id)
+            shopcart.update()
+            return "", status.HTTP_204_NO_CONTENT
+        price = _parse_price_for_update(payload, item)
+        description = payload.get("description", item.description or "")
+        shopcart.upsert_item(
+            product_id=item.product_id,
+            quantity=quantity,
+            price=price,
+            description=description,
+        )
+        shopcart.update()
+        updated_item = next(
+            (it for it in shopcart.items if it.id == item.id),
+            None,
+        )
+        if not updated_item:
+            updated_item = item
+            db.session.refresh(updated_item)
+        return updated_item.serialize(), status.HTTP_200_OK
+
     @api.doc("get_item")
     @api.marshal_with(item_model, code=status.HTTP_200_OK)
     @api.response(404, "Shopcart or Item not found", message_model)
     def get(self, shopcart_id, item_id):
         """Read an item from a shopcart"""
-        app.logger.info(
-            f"Request to read item {item_id} from shopcart {shopcart_id}"
-        )
+        app.logger.info(f"Request to read item {item_id} from shopcart {shopcart_id}")
 
         # Find the shopcart by ID (try both shopcart.id and customer_id)
         shopcart = Shopcart.find(shopcart_id)
@@ -469,91 +559,24 @@ class ItemResource(Resource):
     @api.response(409, "Conflict", message_model)
     def put(self, shopcart_id, item_id):
         """Update an item in a shopcart"""
-        app.logger.info(
-            f"Request to update item {item_id} in shopcart {shopcart_id}"
-        )
+        app.logger.info(f"Request to update item {item_id} in shopcart {shopcart_id}")
 
         # Check if shopcart_id is actually a customer_id (by checking if it matches a customer_id)
         # If so, delegate to the shopcarts route handler logic
         shopcart_by_customer = Shopcart.find_by_customer_id(shopcart_id).first()
         if shopcart_by_customer and shopcart_by_customer.customer_id == shopcart_id:
-            # This is a customer_id route, delegate to shopcarts route logic
-            # Import here to avoid circular imports
-            from service.resources.shopcarts import (
-                _find_item_by_product_or_id,
-                _parse_quantity_from_payload,
-                _parse_price_from_payload,
-                _validate_shopcart_status_for_update,
-                _update_shopcart_item,
-                _handle_zero_quantity_update,
-                check_content_type,
-            )
-            from service.common import status as http_status
-
-            shopcart = shopcart_by_customer
-            check_content_type("application/json")
-            payload = request.get_json() or {}
-
-            _validate_shopcart_status_for_update(shopcart)
-
-            # item_id might be product_id in this case
-            current = _find_item_by_product_or_id(shopcart, item_id)
-            if current is None:
-                abort(
-                    http_status.HTTP_404_NOT_FOUND,
-                    f"Item with product_id '{item_id}' not found in this shopcart.",
-                )
-
-            q = _parse_quantity_from_payload(payload, current)
-            if q == 0:
-                return _handle_zero_quantity_update(shopcart, current)
-
-            price = _parse_price_from_payload(payload, current)
-            desc = payload.get("description", current.description or "")
-
-            _update_shopcart_item(shopcart, current, q, price, desc)
-            # For customer_id routes, always return shopcart (not item)
-            return shopcart.serialize(), http_status.HTTP_200_OK
+            return self._handle_customer_id_route_update(shopcart_by_customer, item_id)
 
         shopcart, item = _validate_shopcart_and_item(shopcart_id, item_id)
-        _check_shopcart_status(shopcart)
-
         payload = request.get_json() or {}
-        q = _parse_quantity_for_update(payload, item)
-
-        if q == 0:
-            shopcart.remove_item(item.product_id)
-            shopcart.update()
-            return "", status.HTTP_204_NO_CONTENT
-
-        price = _parse_price_for_update(payload, item)
-        desc = payload.get("description", item.description or "")
-        shopcart.upsert_item(
-            product_id=item.product_id, quantity=q, price=price, description=desc
-        )
-        shopcart.update()
-
-        # upsert_item updates the existing item in-place, so we can use the original item
-        # Find the updated item from shopcart.items to ensure we have the latest data
-        updated_item = next(
-            (it for it in shopcart.items if it.id == item.id),
-            None,
-        )
-        if not updated_item:
-            # Fallback to the original item if not found in items list
-            updated_item = item
-            db.session.refresh(updated_item)
-
-        return updated_item.serialize(), status.HTTP_200_OK
+        return self._handle_shopcart_id_route_update(shopcart, item, payload)
 
     @api.doc("delete_item")
     @api.response(204, "Item deleted successfully")
     @api.response(404, "Shopcart or Item not found", message_model)
     def delete(self, shopcart_id, item_id):
         """Delete an existing item from a shopcart"""
-        app.logger.info(
-            f"Request to delete item {item_id} from shopcart {shopcart_id}"
-        )
+        app.logger.info(f"Request to delete item {item_id} from shopcart {shopcart_id}")
 
         # Find the shopcart by ID (try both shopcart.id and customer_id)
         shopcart = Shopcart.find(shopcart_id)

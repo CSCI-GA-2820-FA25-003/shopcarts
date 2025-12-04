@@ -31,6 +31,7 @@ from service.common import status
 from service.models import db, Shopcart, ShopcartItem, DataValidationError
 from service.common import error_handlers
 from service import routes
+from service.resources.shopcarts import _find_item_by_product_or_id
 from .factories import ShopcartFactory, ShopcartItemFactory
 
 DATABASE_URI = os.getenv(
@@ -1710,6 +1711,8 @@ class TestYourResourceService(TestCase):
 
         # Test error with description attribute
         class ErrorWithDescription(Exception):
+            """Exception class with description attribute for testing."""
+
             def __init__(self, msg):
                 self.description = msg
                 super().__init__(msg)
@@ -3639,8 +3642,6 @@ class TestYourResourceService(TestCase):
         # Try to find item in second cart using item.id
         # This tests _find_item_by_product_or_id where item is found by id
         # but item.shopcart_id != shopcart.id, so it returns None
-        from service.resources.shopcarts import _find_item_by_product_or_id
-
         result = _find_item_by_product_or_id(cart2, item.id)
         self.assertIsNone(result)
 
@@ -4288,7 +4289,6 @@ class TestYourResourceService(TestCase):
         item.create()
 
         # Find item by product_id
-        from service.resources.shopcarts import _find_item_by_product_or_id
         result = _find_item_by_product_or_id(cart, item.product_id)
         self.assertIsNotNone(result)
         self.assertEqual(result.id, item.id)
@@ -4308,7 +4308,6 @@ class TestYourResourceService(TestCase):
         item.create()
 
         # Find item by item.id (not product_id)
-        from service.resources.shopcarts import _find_item_by_product_or_id
         result = _find_item_by_product_or_id(cart, item.id)
         self.assertIsNotNone(result)
         self.assertEqual(result.id, item.id)
@@ -4320,7 +4319,6 @@ class TestYourResourceService(TestCase):
         cart.create()
 
         # Try to find non-existent item
-        from service.resources.shopcarts import _find_item_by_product_or_id
         result = _find_item_by_product_or_id(cart, 99999)
         self.assertIsNone(result)
 
