@@ -7528,7 +7528,8 @@ class TestYourResourceService(TestCase):
 
     def test_require_quantity_increment_from_payload_returns_increment(self):
         """It should return increment when valid (covers shopcarts.py line 231)"""
-        from service.resources.shopcarts import _require_quantity_increment_from_payload  # pylint: disable=import-outside-toplevel
+        # pylint: disable=import-outside-toplevel
+        from service.resources.shopcarts import _require_quantity_increment_from_payload
 
         # Test that it returns the increment when valid
         result = _require_quantity_increment_from_payload({"quantity": 5})
