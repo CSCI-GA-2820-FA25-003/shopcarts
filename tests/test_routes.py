@@ -7899,7 +7899,7 @@ class TestYourResourceService(TestCase):
             # Should return 404 because item doesn't belong to cart2
             self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
-    def test_put_item_customer_id_mismatch_abort(self):
+    def test_put_item_customer_id_mismatch_abort_by_id(self):
         """It should abort when shopcart found by id but customer_id doesn't match (covers shopcarts.py line 913)"""
         # Create shopcart with specific customer_id
         cart = ShopcartFactory(status="active", customer_id=1000)
