@@ -21,6 +21,7 @@ and SQL database
 import sys
 
 from flask import Flask, current_app
+from flask_restx import Api
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -42,11 +43,25 @@ def create_app():
     from service.models import db
     db.init_app(app)
 
+    # Initialize Flask-RESTX API
+    api = Api(
+        app,
+        version="1.0.0",
+        title="Shopcart REST API Service",
+        description="This service manages customer shopcarts and their items.",
+        doc="/apidocs/",
+        prefix="/api",
+    )
+
     with app.app_context():
         # Dependencies require we import the routes AFTER the Flask app is created
         # pylint: disable=wrong-import-position, wrong-import-order, unused-import
         from service import routes, models  # noqa: F401 E402
         from service.common import error_handlers, cli_commands  # noqa: F401, E402
+        from service.resources import items  # noqa: F401, E402
+        
+        # Register namespaces
+        api.add_namespace(items.api)
 
         try:
             db.create_all()

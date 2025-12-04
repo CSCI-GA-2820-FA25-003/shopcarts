@@ -1704,3 +1704,215 @@ class TestYourResourceService(TestCase):
         resp, code = error_handlers.resource_conflict("duplicate")
         self.assertEqual(code, status.HTTP_409_CONFLICT)
         self.assertEqual(resp.json["message"], "duplicate")
+
+    ######################################################################
+    # TEST NEW API ENDPOINTS (/api/shopcarts/<shopcart_id>/items)
+    ######################################################################
+
+    def test_api_create_item(self):
+        """It should create an item via the new API endpoint"""
+        # Create a shopcart first
+        resp = self.client.post(
+            "/shopcarts",
+            json={"customer_id": 1, "status": "active"},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        shopcart_id = resp.get_json()["id"]
+
+        # Create an item via new API
+        resp = self.client.post(
+            f"/api/shopcarts/{shopcart_id}/items",
+            json={
+                "product_id": 100,
+                "quantity": 2,
+                "price": 19.99,
+                "description": "Coffee Mug",
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        data = resp.get_json()
+        self.assertEqual(data["product_id"], 100)
+        self.assertEqual(data["quantity"], 2)
+        self.assertIn("id", data)
+        self.assertEqual(data["shopcart_id"], shopcart_id)
+
+    def test_api_get_item(self):
+        """It should get an item via the new API endpoint"""
+        # Create a shopcart and item
+        resp = self.client.post(
+            "/shopcarts",
+            json={"customer_id": 1, "status": "active"},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        shopcart_id = resp.get_json()["id"]
+
+        resp = self.client.post(
+            f"/api/shopcarts/{shopcart_id}/items",
+            json={"product_id": 100, "quantity": 2, "price": 9.99},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        item_id = resp.get_json()["id"]
+
+        # Get the item via new API
+        resp = self.client.get(f"/api/shopcarts/{shopcart_id}/items/{item_id}")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.get_json()
+        self.assertEqual(data["id"], item_id)
+        self.assertEqual(data["product_id"], 100)
+
+    def test_api_update_item(self):
+        """It should update an item via the new API endpoint"""
+        # Create a shopcart and item
+        resp = self.client.post(
+            "/shopcarts",
+            json={"customer_id": 1, "status": "active"},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        shopcart_id = resp.get_json()["id"]
+
+        resp = self.client.post(
+            f"/api/shopcarts/{shopcart_id}/items",
+            json={"product_id": 100, "quantity": 2, "price": 9.99},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        item_id = resp.get_json()["id"]
+
+        # Update the item via new API
+        resp = self.client.put(
+            f"/api/shopcarts/{shopcart_id}/items/{item_id}",
+            json={"quantity": 5, "price": 12.99},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.get_json()
+        self.assertEqual(data["quantity"], 5)
+        self.assertAlmostEqual(float(data["price"]), 12.99, places=2)
+
+    def test_api_delete_item(self):
+        """It should delete an item via the new API endpoint"""
+        # Create a shopcart and item
+        resp = self.client.post(
+            "/shopcarts",
+            json={"customer_id": 1, "status": "active"},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        shopcart_id = resp.get_json()["id"]
+
+        resp = self.client.post(
+            f"/api/shopcarts/{shopcart_id}/items",
+            json={"product_id": 123, "quantity": 2, "price": 10.5},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        item_id = resp.get_json()["id"]
+
+        # Delete the item via new API
+        resp = self.client.delete(f"/api/shopcarts/{shopcart_id}/items/{item_id}")
+        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+
+        # Verify item is deleted
+        resp = self.client.get(f"/api/shopcarts/{shopcart_id}/items/{item_id}")
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_api_list_items(self):
+        """It should list items via the new API endpoint"""
+        # Create a shopcart
+        resp = self.client.post(
+            "/shopcarts",
+            json={"customer_id": 1, "status": "active"},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        shopcart_id = resp.get_json()["id"]
+
+        # Add multiple items
+        self.client.post(
+            f"/api/shopcarts/{shopcart_id}/items",
+            json={"product_id": 101, "quantity": 1, "price": 9.99},
+            content_type="application/json",
+        )
+        self.client.post(
+            f"/api/shopcarts/{shopcart_id}/items",
+            json={"product_id": 102, "quantity": 2, "price": 19.99},
+            content_type="application/json",
+        )
+
+        # List items via new API
+        resp = self.client.get(f"/api/shopcarts/{shopcart_id}/items")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.get_json()
+        self.assertEqual(len(data), 2)
+        self.assertEqual(data[0]["product_id"], 101)
+        self.assertEqual(data[1]["product_id"], 102)
+
+    def test_api_list_items_with_filters(self):
+        """It should filter items via query parameters"""
+        # Create a shopcart
+        resp = self.client.post(
+            "/shopcarts",
+            json={"customer_id": 1, "status": "active"},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        shopcart_id = resp.get_json()["id"]
+
+        # Add items with different prices
+        self.client.post(
+            f"/api/shopcarts/{shopcart_id}/items",
+            json={"product_id": 101, "quantity": 1, "price": 5.00, "description": "Eco-friendly"},
+            content_type="application/json",
+        )
+        self.client.post(
+            f"/api/shopcarts/{shopcart_id}/items",
+            json={"product_id": 102, "quantity": 2, "price": 10.00, "description": "Durable"},
+            content_type="application/json",
+        )
+
+        # Filter by min_price
+        resp = self.client.get(f"/api/shopcarts/{shopcart_id}/items?min_price=6")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.get_json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["product_id"], 102)
+
+        # Filter by description
+        resp = self.client.get(f"/api/shopcarts/{shopcart_id}/items?description=eco")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.get_json()
+        self.assertEqual(len(data), 1)
+        self.assertIn("eco", data[0]["description"].lower())
+
+    def test_api_item_not_found(self):
+        """It should return 404 for non-existent items"""
+        # Create a shopcart
+        resp = self.client.post(
+            "/shopcarts",
+            json={"customer_id": 1, "status": "active"},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        shopcart_id = resp.get_json()["id"]
+
+        # Try to get non-existent item
+        resp = self.client.get(f"/api/shopcarts/{shopcart_id}/items/99999")
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+        data = resp.get_json()
+        self.assertIn("message", data)
+
+    def test_api_shopcart_not_found(self):
+        """It should return 404 for non-existent shopcart"""
+        resp = self.client.post(
+            "/api/shopcarts/99999/items",
+            json={"product_id": 1, "quantity": 1, "price": 1.0},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+        data = resp.get_json()
+        self.assertIn("message", data)
