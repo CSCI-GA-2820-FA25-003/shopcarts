@@ -1,15 +1,15 @@
-"""
-Flask-RESTX API initialization
-"""
+"""Shared Flask-RESTX API configuration for the Shopcart service."""
 
 from flask_restx import Api
 
-# Create the Flask-RESTX API instance
+# Centralized API instance so namespaces can be registered in one place.
 api = Api(
-    version="1.0.0",
     title="Shopcart REST API Service",
+    version="1.0.0",
     description="This service manages customer shopcarts and their items.",
-    doc="/api/",
+    prefix="/api",
+    doc="/apidocs/",
+    errors=False,  # Defer to our global error handlers for consistent JSON
 )
 
 # Import and register namespaces
@@ -21,3 +21,6 @@ def register_namespaces():
     from service.resources.items import api as items_namespace
 
     api.add_namespace(items_namespace)
+
+
+__all__ = ["api", "register_namespaces"]
