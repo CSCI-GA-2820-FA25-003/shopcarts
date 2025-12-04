@@ -5,9 +5,8 @@ import decimal
 from decimal import Decimal
 from datetime import datetime
 from dataclasses import dataclass
-from flask import request
+from flask import current_app as app, request
 from flask_restx import Resource, Namespace, fields, abort
-from flask import current_app as app
 
 from service.models import Shopcart, ShopcartItem
 from service.common import status
@@ -85,6 +84,7 @@ def _require_product_id(payload):
             status.HTTP_400_BAD_REQUEST,
             "product_id is required and must be an integer.",
         )
+        return None  # Never reached, but satisfies pylint
 
 
 def _require_quantity_increment(payload):
@@ -93,8 +93,10 @@ def _require_quantity_increment(payload):
         increment = int(payload.get("quantity", 0))
     except (TypeError, ValueError):
         abort(status.HTTP_400_BAD_REQUEST, "quantity must be an integer.")
+        return None  # Never reached, but satisfies pylint
     if increment <= 0:
         abort(status.HTTP_400_BAD_REQUEST, "quantity must be a positive integer.")
+        return None  # Never reached, but satisfies pylint
     return increment
 
 
@@ -104,10 +106,12 @@ def _resolve_price(existing_item, price_raw):
         return Decimal(str(existing_item.price))
     if price_raw is None:
         abort(status.HTTP_400_BAD_REQUEST, "price is required.")
+        return None  # Never reached, but satisfies pylint
     try:
         return Decimal(str(price_raw))
     except (decimal.InvalidOperation, ValueError, TypeError):
         abort(status.HTTP_400_BAD_REQUEST, "price is invalid.")
+        return None  # Never reached, but satisfies pylint
 
 
 def _resolve_description(existing_item, payload):
@@ -116,15 +120,17 @@ def _resolve_description(existing_item, payload):
     return payload.get("description", base or "")
 
 
-def _parse_price_bound(value: str, field: str) -> Decimal:
+def _parse_price_bound(value: str, field: str) -> Decimal | None:
     """Parse a numeric price boundary from the request."""
     cleaned = (value or "").strip()
     if not cleaned:
         abort(status.HTTP_400_BAD_REQUEST, f"{field} must be a number")
+        return None  # Never reached, but satisfies pylint
     try:
         return Decimal(cleaned)
     except (decimal.InvalidOperation, ValueError, TypeError):
         abort(status.HTTP_400_BAD_REQUEST, f"{field} must be a number")
+        return None  # Never reached, but satisfies pylint
 
 
 def _normalize_description_filter(value) -> str | None:
@@ -148,6 +154,7 @@ def _parse_optional_int(args, field: str, error_message: str) -> int | None:
         return int(args.get(field))
     except (TypeError, ValueError):
         abort(status.HTTP_400_BAD_REQUEST, error_message)
+        return None  # Never reached, but satisfies pylint
 
 
 def _validate_shopcart_and_item(shopcart_id, item_id):
@@ -208,6 +215,7 @@ def _parse_price_for_update(payload, item):
         return Decimal(str(price_raw))
     except (decimal.InvalidOperation, ValueError, TypeError):
         abort(status.HTTP_400_BAD_REQUEST, "price is invalid.")
+        return None  # Never reached, but satisfies pylint
 
 
 @dataclass
