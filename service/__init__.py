@@ -40,12 +40,13 @@ def create_app():
     # Initialize Plugins
     # pylint: disable=import-outside-toplevel
     from service.models import db
-    from service.api import api  # noqa: F401
+    from service.api import api, register_namespaces  # noqa: F401
 
     db.init_app(app)
 
     # Initialize Flask-RESTX API
     api.init_app(app)
+    register_namespaces()
 
     with app.app_context():
         # Dependencies require we import the routes AFTER the Flask app is created
