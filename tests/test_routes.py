@@ -24,7 +24,7 @@ import logging
 from unittest import TestCase
 from unittest.mock import patch
 from decimal import Decimal
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from werkzeug.exceptions import HTTPException
 from wsgi import app
 from service.common import status
@@ -1668,7 +1668,8 @@ class TestYourResourceService(TestCase):
         self.assertAlmostEqual(data["subtotal"], 15.00, places=2)  # 3 * 5.00
 
     def test_get_shopcart_totals_with_multiple_items_mixed_quantities(self):
-        """It should correctly calculate totals with multiple items of different quantities (covers shopcarts.py line 1007-1015)"""
+        """It should correctly calculate totals with multiple items of different quantities
+        (covers shopcarts.py line 1007-1015)"""
         cart = self._create_cart(customer_id=8604)
         # Add items with various quantities
         items_data = [
@@ -6493,22 +6494,278 @@ class TestYourResourceService(TestCase):
     ######################################################################
 
     def test_post_item_unable_to_persist_coverage(self):
-        """It should return 500 when item cannot be persisted after upsert (covers shopcarts.py line 759-763)"""
+        """It should return 500 when item cannot be persisted after upsert."""
         # Create a shopcart
         cart = ShopcartFactory(status="active")
         cart.create()
 
-        # Mock the shopcart.items to return empty after upsert to simulate persistence failure
-        with patch.object(cart, "items", []):
-            # Try to add an item - this should fail when updated_item is not found
+        # Mock shopcart.update() to clear items after update, simulating persistence failure
+        original_update = Shopcart.update
+
+        def mock_update(self):
+            original_update(self)
+            # Clear items to simulate that item was not persisted
+            self.items = []
+
+        with patch.object(Shopcart, "update", mock_update):
             resp = self.client.post(
                 f"{BASE_URL}/{cart.customer_id}/items",
                 json={"product_id": 100, "quantity": 1, "price": 10.0},
                 content_type="application/json",
             )
-            # This might succeed or fail depending on the actual implementation
-            # The test is to ensure the error path is covered
-            self.assertIsNotNone(resp)
+            self.assertEqual(resp.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
+            data = resp.get_json()
+            self.assertIn("Unable to persist cart item.", data["message"])
+
+    def test_post_item_missing_price_for_new_item_coverage(self):
+        """It should return 400 when price is missing for new item (covers shopcarts.py line 238-239)."""
+        # Create a shopcart
+        cart = ShopcartFactory(status="active")
+        cart.create()
+
+        # Try to add item without price (new item, no existing_item)
+        resp = self.client.post(
+            f"{BASE_URL}/{cart.customer_id}/items",
+            json={"product_id": 100, "quantity": 1},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        data = resp.get_json()
+        self.assertIn("price is required", data["message"])
+
+    def test_post_item_invalid_price_coverage(self):
+        """It should return 400 when price is invalid (covers shopcarts.py line 242-243)."""
+        # Create a shopcart
+        cart = ShopcartFactory(status="active")
+        cart.create()
+
+        # Try to add item with invalid price
+        resp = self.client.post(
+            f"{BASE_URL}/{cart.customer_id}/items",
+            json={"product_id": 100, "quantity": 1, "price": "invalid"},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        data = resp.get_json()
+        self.assertIn("price is invalid", data["message"])
+
+    def test_resolve_description_without_existing_item_coverage(self):
+        """It should resolve description when existing_item is None (covers shopcarts.py line 156-157)."""
+        # Create a shopcart
+        cart = ShopcartFactory(status="active")
+        cart.create()
+
+        # Add item without description (existing_item is None)
+        resp = self.client.post(
+            f"{BASE_URL}/{cart.customer_id}/items",
+            json={"product_id": 100, "quantity": 1, "price": 10.0},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        data = resp.get_json()
+        # Description should be empty string when not provided
+        self.assertIn("description", data)
+
+    def test_check_if_product_id_is_item_id_coverage(self):
+        """It should check if product_id is actually an item_id (covers shopcarts.py line 279-283)."""
+        # Create a shopcart
+        cart = ShopcartFactory(status="active")
+        cart.create()
+
+        # Add an item
+        item = ShopcartItemFactory(
+            shopcart_id=cart.id, product_id=100, quantity=1, price=Decimal("10.00")
+        )
+        item.create()
+
+        # Update item using item.id instead of product_id
+        # This tests _check_if_product_id_is_item_id
+        resp = self.client.put(
+            f"{BASE_URL}/{cart.customer_id}/items/{item.id}",
+            json={"quantity": 2, "price": 10.0},
+            content_type="application/json",
+        )
+        # Should succeed because it can find item by id
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+    def test_validate_shopcart_status_for_update_abandoned_coverage(self):
+        """It should return 409 when updating item on abandoned shopcart (covers shopcarts.py line 265-276)."""
+        # Create an abandoned shopcart
+        cart = ShopcartFactory(status="abandoned")
+        cart.create()
+
+        # Add an item
+        item = ShopcartItemFactory(
+            shopcart_id=cart.id, product_id=100, quantity=1, price=Decimal("10.00")
+        )
+        item.create()
+
+        # Try to update item on abandoned shopcart
+        resp = self.client.put(
+            f"{BASE_URL}/{cart.customer_id}/items/{item.product_id}",
+            json={"quantity": 2, "price": 10.0},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_409_CONFLICT)
+        data = resp.get_json()
+        self.assertIn("Cannot update items on an abandoned shopcart", data["message"])
+
+    def test_resolve_price_for_new_item_with_existing_item_coverage(self):
+        """It should use existing item price when price is None (covers shopcarts.py line 236-237)."""
+        # Create a shopcart
+        cart = ShopcartFactory(status="active")
+        cart.create()
+
+        # Add an item with price
+        item = ShopcartItemFactory(
+            shopcart_id=cart.id,
+            product_id=100,
+            quantity=1,
+            price=Decimal("10.00"),
+            description="Test item",
+        )
+        item.create()
+
+        # Add more quantity without specifying price (should use existing price)
+        resp = self.client.post(
+            f"{BASE_URL}/{cart.customer_id}/items",
+            json={"product_id": 100, "quantity": 1},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        data = resp.get_json()
+        # Price should be preserved from existing item
+        self.assertEqual(float(data["price"]), 10.0)
+
+    def test_list_shopcarts_with_total_price_filters_coverage(self):
+        """It should filter shopcarts by total price (covers shopcarts.py line 461-476, 336-347)."""
+        # Create shopcarts with different totals
+        cart1 = ShopcartFactory(status="active")
+        cart1.create()
+        item1 = ShopcartItemFactory(
+            shopcart_id=cart1.id, product_id=100, quantity=2, price=Decimal("10.00")
+        )
+        item1.create()
+
+        cart2 = ShopcartFactory(status="active")
+        cart2.create()
+        item2 = ShopcartItemFactory(
+            shopcart_id=cart2.id, product_id=200, quantity=3, price=Decimal("20.00")
+        )
+        item2.create()
+
+        # Test filtering by min_total
+        resp = self.client.get(f"{BASE_URL}?min_total=50")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.get_json()
+        # Only cart2 should be returned (total = 60)
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["id"], cart2.id)
+
+        # Test filtering by max_total
+        resp = self.client.get(f"{BASE_URL}?max_total=25")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.get_json()
+        # Only cart1 should be returned (total = 20)
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["id"], cart1.id)
+
+        # Test filtering by total_price_lt alias
+        resp = self.client.get(f"{BASE_URL}?total_price_lt=25")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.get_json()
+        self.assertEqual(len(data), 1)
+
+        # Test filtering by total_price_gt alias
+        resp = self.client.get(f"{BASE_URL}?total_price_gt=50")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.get_json()
+        self.assertEqual(len(data), 1)
+
+    def test_list_shopcarts_invalid_total_price_filters_coverage(self):
+        """It should return 400 for invalid total price filters (covers shopcarts.py line 319-333)."""
+        # Test empty max_total
+        resp = self.client.get(f"{BASE_URL}?max_total=")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        data = resp.get_json()
+        self.assertIn("must be a non-empty decimal value", data["message"])
+
+        # Test invalid max_total
+        resp = self.client.get(f"{BASE_URL}?max_total=invalid")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        data = resp.get_json()
+        self.assertIn("must be a valid decimal number", data["message"])
+
+        # Test max_total < min_total
+        resp = self.client.get(f"{BASE_URL}?min_total=50&max_total=20")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        data = resp.get_json()
+        self.assertIn(
+            "max_total must be greater than or equal to min_total", data["message"]
+        )
+
+    def test_list_shopcarts_with_datetime_filters_coverage(self):
+        """It should filter shopcarts by created date (covers shopcarts.py line 585-604, 413-417)."""
+        # Create a shopcart
+        cart = ShopcartFactory(status="active")
+        cart.create()
+
+        # Test filtering by created_after
+        created_after = (
+            datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=1)
+        ).isoformat()
+        resp = self.client.get(f"{BASE_URL}?created_after={created_after}")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+        # Test filtering by created_before
+        created_before = (
+            datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=1)
+        ).isoformat()
+        resp = self.client.get(f"{BASE_URL}?created_before={created_before}")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+        # Test invalid datetime format
+        resp = self.client.get(f"{BASE_URL}?created_after=invalid")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        data = resp.get_json()
+        self.assertIn("must be a valid ISO8601 timestamp", data["message"])
+
+    def test_list_items_invalid_filters_coverage(self):
+        """It should return 400 for unsupported item filter parameters (covers shopcarts.py line 529-567)."""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+
+        # Test unsupported filter parameter
+        resp = self.client.get(
+            f"{BASE_URL}/{cart.customer_id}/items?unsupported_param=value"
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        data = resp.get_json()
+        self.assertIn("not a supported filter parameter", data["message"])
+
+        # Test multiple unsupported parameters
+        resp = self.client.get(
+            f"{BASE_URL}/{cart.customer_id}/items?unsupported1=value1&unsupported2=value2"
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        data = resp.get_json()
+        self.assertIn("are not supported filter parameters", data["message"])
+
+        # Test min_price > max_price
+        resp = self.client.get(
+            f"{BASE_URL}/{cart.customer_id}/items?min_price=20&max_price=10"
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        data = resp.get_json()
+        self.assertIn(
+            "min_price must be less than or equal to max_price", data["message"]
+        )
+
+        # Test empty description filter
+        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items?description=")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        data = resp.get_json()
+        self.assertIn("description must be a non-empty string", data["message"])
 
     def test_get_items_with_all_filters_coverage(self):
         """It should filter items by all available filters (covers shopcarts.py line 792-804)"""
@@ -7266,7 +7523,9 @@ class TestYourResourceService(TestCase):
 
     def test_resolve_description_no_existing_item_no_description_shopcarts(self):
         """It should return empty string when no existing item and no description (covers shopcarts.py line 156-157)"""
-        from service.resources.shopcarts import _resolve_description  # pylint: disable=import-outside-toplevel
+        from service.resources.shopcarts import (
+            _resolve_description,
+        )  # pylint: disable=import-outside-toplevel
 
         # Test with None existing_item and empty payload
         result = _resolve_description(None, {})
@@ -7378,7 +7637,10 @@ class TestYourResourceService(TestCase):
 
     def test_parse_price_bound_raises_validation_error(self):
         """It should raise ValidationError for invalid price bound (covers shopcarts.py line 484-490)"""
-        from service.resources.shopcarts import _parse_price_bound, ValidationError  # pylint: disable=import-outside-toplevel
+        from service.resources.shopcarts import (
+            _parse_price_bound,
+            ValidationError,
+        )  # pylint: disable=import-outside-toplevel
 
         # Test empty value
         with self.assertRaises(ValidationError) as context:
@@ -7409,7 +7671,10 @@ class TestYourResourceService(TestCase):
 
     def test_parse_optional_int_raises_validation_error(self):
         """It should raise ValidationError for invalid optional int (covers shopcarts.py line 508-513)"""
-        from service.resources.shopcarts import _parse_optional_int, ValidationError  # pylint: disable=import-outside-toplevel
+        from service.resources.shopcarts import (
+            _parse_optional_int,
+            ValidationError,
+        )  # pylint: disable=import-outside-toplevel
 
         # Test invalid value
         with self.assertRaises(ValidationError) as context:
@@ -7420,7 +7685,10 @@ class TestYourResourceService(TestCase):
 
     def test_parse_item_filters_raises_validation_errors(self):
         """It should raise ValidationError for invalid filters (covers shopcarts.py line 518-554)"""
-        from service.resources.shopcarts import _parse_item_filters, ValidationError  # pylint: disable=import-outside-toplevel
+        from service.resources.shopcarts import (
+            _parse_item_filters,
+            ValidationError,
+        )  # pylint: disable=import-outside-toplevel
 
         # Test single unsupported filter
         with self.assertRaises(ValidationError) as context:
@@ -7513,7 +7781,9 @@ class TestYourResourceService(TestCase):
 
     def test_shopcart_list_abort_on_not_found_error(self):
         """It should abort on NotFoundError (covers shopcarts.py line 617)"""
-        from service.resources.shopcarts import NotFoundError  # pylint: disable=import-outside-toplevel
+        from service.resources.shopcarts import (
+            NotFoundError,
+        )  # pylint: disable=import-outside-toplevel
 
         # Mock _parse_list_filters to raise NotFoundError
         with patch(  # pylint: disable=redefined-outer-name
@@ -7570,7 +7840,9 @@ class TestYourResourceService(TestCase):
 
     def test_find_existing_item_returns_item(self):
         """It should return item when found (covers shopcarts.py line 248)"""
-        from service.resources.shopcarts import _find_existing_item  # pylint: disable=import-outside-toplevel
+        from service.resources.shopcarts import (
+            _find_existing_item,
+        )  # pylint: disable=import-outside-toplevel
 
         cart = ShopcartFactory(status="active")
         cart.create()
@@ -7593,7 +7865,9 @@ class TestYourResourceService(TestCase):
 
     def test_find_shopcart_by_id_or_customer_returns_shopcart(self):
         """It should return shopcart when found (covers shopcarts.py line 204)"""
-        from service.resources.shopcarts import _find_shopcart_by_id_or_customer  # pylint: disable=import-outside-toplevel
+        from service.resources.shopcarts import (
+            _find_shopcart_by_id_or_customer,
+        )  # pylint: disable=import-outside-toplevel
 
         cart = ShopcartFactory(status="active")
         cart.create()
@@ -7605,7 +7879,9 @@ class TestYourResourceService(TestCase):
 
     def test_normalize_description_filter_returns_description(self):
         """It should return description when valid (covers shopcarts.py line 503)"""
-        from service.resources.shopcarts import _normalize_description_filter  # pylint: disable=import-outside-toplevel
+        from service.resources.shopcarts import (
+            _normalize_description_filter,
+        )  # pylint: disable=import-outside-toplevel
 
         # Test that it returns the description when valid
         result = _normalize_description_filter("valid description")
@@ -7613,7 +7889,9 @@ class TestYourResourceService(TestCase):
 
     def test_parse_item_filters_returns_filters(self):
         """It should return filters when valid (covers shopcarts.py line 554)"""
-        from service.resources.shopcarts import _parse_item_filters  # pylint: disable=import-outside-toplevel
+        from service.resources.shopcarts import (
+            _parse_item_filters,
+        )  # pylint: disable=import-outside-toplevel
 
         # Test that it returns filters when valid
         result = _parse_item_filters({"product_id": "100", "quantity": "2"})
@@ -7686,7 +7964,9 @@ class TestYourResourceService(TestCase):
         self.assertIn("message", data)
 
         # Test with invalid product_id to trigger ValidationError (line 860-861)
-        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items?product_id=not_a_number")
+        resp = self.client.get(
+            f"{BASE_URL}/{cart.customer_id}/items?product_id=not_a_number"
+        )
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
         data = resp.get_json()
         self.assertIn("message", data)
@@ -7767,7 +8047,9 @@ class TestYourResourceService(TestCase):
 
     def test_resolve_price_for_new_item_with_existing_item_none_price(self):
         """It should return existing item price when price_raw is None (covers shopcarts.py line 237)"""
-        from service.resources.shopcarts import _resolve_price_for_new_item  # pylint: disable=import-outside-toplevel
+        from service.resources.shopcarts import (
+            _resolve_price_for_new_item,
+        )  # pylint: disable=import-outside-toplevel
 
         cart = ShopcartFactory(status="active")
         cart.create()
@@ -7782,7 +8064,9 @@ class TestYourResourceService(TestCase):
 
     def test_get_update_response_item_found_and_matches_shopcart(self):
         """It should return item when found by id and matches shopcart (covers shopcarts.py line 302-304)"""
-        from service.resources.shopcarts import _get_update_response  # pylint: disable=import-outside-toplevel
+        from service.resources.shopcarts import (
+            _get_update_response,
+        )  # pylint: disable=import-outside-toplevel
 
         cart = ShopcartFactory(status="active")
         cart.create()
@@ -7833,7 +8117,10 @@ class TestYourResourceService(TestCase):
 
     def test_apply_item_filters_all_conditions_directly(self):
         """It should test _apply_item_filters function directly (covers shopcarts.py line 559-569)"""
-        from service.resources.shopcarts import _apply_item_filters, ItemFilters  # pylint: disable=import-outside-toplevel
+        from service.resources.shopcarts import (
+            _apply_item_filters,
+            ItemFilters,
+        )  # pylint: disable=import-outside-toplevel
 
         cart = ShopcartFactory(status="active")
         cart.create()
@@ -7930,7 +8217,9 @@ class TestYourResourceService(TestCase):
         self.assertIn("message", data)
 
         # Test ValidationError for invalid quantity filter
-        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items?quantity=not_a_number")
+        resp = self.client.get(
+            f"{BASE_URL}/{cart.customer_id}/items?quantity=not_a_number"
+        )
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
         data = resp.get_json()
         self.assertIn("message", data)

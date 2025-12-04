@@ -251,6 +251,17 @@ def _find_existing_item(shopcart, product_id):
     )
 
 
+def _verify_item_persisted(shopcart: Shopcart, product_id: int) -> ShopcartItem:
+    """Verify that an item was successfully persisted after upsert."""
+    updated_item = _find_existing_item(shopcart, product_id)
+    if not updated_item:
+        abort(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            message="Unable to persist cart item.",
+        )
+    return updated_item
+
+
 def _validate_shopcart_status_for_update(shopcart: Shopcart):
     """Validate that shopcart status allows updates."""
     status_norm = (
@@ -818,13 +829,7 @@ class ShopcartItemsCollectionResource(Resource):
             shopcart.last_modified = datetime.utcnow()
             shopcart.update()
 
-            updated_item = _find_existing_item(shopcart, product_id)
-            if not updated_item:
-                abort(
-                    status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    message="Unable to persist cart item.",
-                )
-
+            updated_item = _verify_item_persisted(shopcart, product_id)
             return updated_item.serialize(), status.HTTP_201_CREATED
         except NotFoundError as e:
             abort(e.status_code, message=e.message)
