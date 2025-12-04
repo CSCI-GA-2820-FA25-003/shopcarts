@@ -25,7 +25,6 @@ from sqlalchemy import inspect, text
 from sqlalchemy.exc import SQLAlchemyError
 
 from service import config
-from service.api import api
 from service.common import log_handlers
 
 
@@ -44,7 +43,6 @@ def create_app():
     from service.api import api, register_namespaces  # noqa: F401
 
     db.init_app(app)
-    api.init_app(app)
 
     # Initialize Flask-RESTX API
     api.init_app(app)
@@ -52,10 +50,12 @@ def create_app():
 
     with app.app_context():
         from service.resources.shopcarts import ns as shopcart_ns  # noqa: E402
+
         # Dependencies require we import the routes AFTER the Flask app is created
         # pylint: disable=wrong-import-position, wrong-import-order, unused-import
         from service import routes, models  # noqa: F401 E402
         from service.common import error_handlers, cli_commands  # noqa: F401, E402
+
         api.add_namespace(shopcart_ns)
 
         try:
