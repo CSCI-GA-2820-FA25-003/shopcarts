@@ -31,7 +31,27 @@ from service.common import status
 from service.models import db, Shopcart, ShopcartItem, DataValidationError
 from service.common import error_handlers
 from service import routes
-from service.resources.shopcarts import _find_item_by_product_or_id
+from service.resources.shopcarts import (
+    _find_item_by_product_or_id,
+    _resolve_description,
+    _find_shopcart_by_id_or_customer,
+    NotFoundError,
+    _require_product_id_from_payload,
+    ValidationError,
+    _require_quantity_increment_from_payload,
+    _resolve_price_for_new_item,
+    _parse_price_bound,
+    _normalize_description_filter,
+    _parse_optional_int,
+    _parse_item_filters,
+    _find_existing_item,
+    _get_update_response,
+    _apply_item_filters,
+    ItemFilters,
+    _verify_item_persisted,
+    ShopcartItemsCollectionResource,
+    ShopcartItemResource,
+)
 from service.resources import items
 from .factories import ShopcartFactory, ShopcartItemFactory
 
@@ -131,6 +151,70 @@ class TestYourResourceService(TestCase):
             )
         db.session.refresh(cart)
         return cart
+
+    ######################################################################
+    # Additional unit tests to directly cover helper/resource logic
+    ######################################################################
+
+    def test_verify_item_persisted_success_and_failure_paths(self):
+        """It should use _verify_item_persisted to confirm persistence or abort"""
+        # Success path: item exists in the cart
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        item = ShopcartItemFactory(shopcart_id=cart.id, product_id=999)
+        item.create()
+
+        # Reload cart so that relationship items are populated
+        reloaded = Shopcart.find(cart.id)
+        result = _verify_item_persisted(reloaded, 999)
+        self.assertEqual(result.product_id, 999)
+
+        # Failure path: missing item should trigger abort with 500
+        with self.assertRaises(HTTPException) as ctx:
+            _verify_item_persisted(reloaded, 111)
+        self.assertEqual(ctx.exception.code, status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def test_shopcart_items_collection_post_success_direct(self):
+        """It should add an item via ShopcartItemsCollectionResource.post"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+
+        resource = ShopcartItemsCollectionResource()
+        payload = {"product_id": 321, "quantity": 1, "price": 5.0}
+
+        with app.test_request_context(
+            f"{BASE_URL}/{cart.customer_id}/items",
+            method="POST",
+            json=payload,
+            content_type="application/json",
+        ):
+            result = resource.post(cart.customer_id)
+
+        # Flask-RESTX resources may return (body, status) or (body, status, headers)
+        # Handle tuple return values safely
+        if isinstance(result, tuple) and len(result) >= 2:
+            body, status_code = result[0], result[1]
+        elif isinstance(result, tuple):
+            body = result[0]
+            status_code = status.HTTP_201_CREATED
+        else:
+            body = result
+            status_code = status.HTTP_201_CREATED
+
+        self.assertEqual(status_code, status.HTTP_201_CREATED)
+        self.assertIsInstance(body, dict)
+        self.assertEqual(body["product_id"], 321)
+
+    def test_shopcart_item_resource_delete_abort_when_cart_missing(self):
+        """It should abort via ShopcartItemResource.delete when shopcart is missing"""
+        resource = ShopcartItemResource()
+        # Use a non-existent customer_id to trigger the NotFoundError path
+        missing_customer_id = 424242
+        missing_product_id = 1
+        with app.test_request_context():
+            with self.assertRaises(HTTPException) as ctx:
+                resource.delete(missing_customer_id, missing_product_id)
+        self.assertEqual(ctx.exception.code, status.HTTP_404_NOT_FOUND)
 
     ######################################################################
     #  P L A C E   T E S T   C A S E S   H E R E
@@ -7523,10 +7607,6 @@ class TestYourResourceService(TestCase):
 
     def test_resolve_description_no_existing_item_no_description_shopcarts(self):
         """It should return empty string when no existing item and no description (covers shopcarts.py line 156-157)"""
-        from service.resources.shopcarts import (
-            _resolve_description,
-        )  # pylint: disable=import-outside-toplevel
-
         # Test with None existing_item and empty payload
         result = _resolve_description(None, {})
         self.assertEqual(result, "")
@@ -7537,11 +7617,6 @@ class TestYourResourceService(TestCase):
 
     def test_find_shopcart_by_id_or_customer_raises_not_found_error(self):
         """It should raise NotFoundError when shopcart not found (covers shopcarts.py line 199-204)"""
-        from service.resources.shopcarts import (  # pylint: disable=import-outside-toplevel
-            _find_shopcart_by_id_or_customer,
-            NotFoundError,
-        )
-
         # Test that it raises NotFoundError when shopcart doesn't exist
         with self.assertRaises(NotFoundError) as context:
             _find_shopcart_by_id_or_customer(99999)
@@ -7551,11 +7626,6 @@ class TestYourResourceService(TestCase):
 
     def test_require_product_id_from_payload_raises_validation_error(self):
         """It should raise ValidationError for invalid product_id (covers shopcarts.py line 209-212)"""
-        from service.resources.shopcarts import (  # pylint: disable=import-outside-toplevel
-            _require_product_id_from_payload,
-            ValidationError,
-        )
-
         # Test KeyError
         with self.assertRaises(ValidationError) as context:
             _require_product_id_from_payload({})
@@ -7573,11 +7643,6 @@ class TestYourResourceService(TestCase):
 
     def test_require_quantity_increment_from_payload_raises_validation_error(self):
         """It should raise ValidationError for invalid quantity (covers shopcarts.py line 220-231)"""
-        from service.resources.shopcarts import (  # pylint: disable=import-outside-toplevel
-            _require_quantity_increment_from_payload,
-            ValidationError,
-        )
-
         # Test TypeError
         with self.assertRaises(ValidationError) as context:
             _require_quantity_increment_from_payload({"quantity": "invalid"})
@@ -7599,11 +7664,6 @@ class TestYourResourceService(TestCase):
 
     def test_resolve_price_for_new_item_raises_validation_error(self):
         """It should raise ValidationError for invalid price (covers shopcarts.py line 236-243)"""
-        from service.resources.shopcarts import (  # pylint: disable=import-outside-toplevel
-            _resolve_price_for_new_item,
-            ValidationError,
-        )
-
         # Test missing price for new item
         with self.assertRaises(ValidationError) as context:
             _resolve_price_for_new_item(None, None)
@@ -7637,11 +7697,6 @@ class TestYourResourceService(TestCase):
 
     def test_parse_price_bound_raises_validation_error(self):
         """It should raise ValidationError for invalid price bound (covers shopcarts.py line 484-490)"""
-        from service.resources.shopcarts import (
-            _parse_price_bound,
-            ValidationError,
-        )  # pylint: disable=import-outside-toplevel
-
         # Test empty value
         with self.assertRaises(ValidationError) as context:
             _parse_price_bound("", "min_price")
@@ -7654,11 +7709,6 @@ class TestYourResourceService(TestCase):
 
     def test_normalize_description_filter_raises_validation_error(self):
         """It should raise ValidationError for blank description (covers shopcarts.py line 495-503)"""
-        from service.resources.shopcarts import (  # pylint: disable=import-outside-toplevel
-            _normalize_description_filter,
-            ValidationError,
-        )
-
         # Test empty string
         with self.assertRaises(ValidationError) as context:
             _normalize_description_filter("")
@@ -7671,11 +7721,6 @@ class TestYourResourceService(TestCase):
 
     def test_parse_optional_int_raises_validation_error(self):
         """It should raise ValidationError for invalid optional int (covers shopcarts.py line 508-513)"""
-        from service.resources.shopcarts import (
-            _parse_optional_int,
-            ValidationError,
-        )  # pylint: disable=import-outside-toplevel
-
         # Test invalid value
         with self.assertRaises(ValidationError) as context:
             _parse_optional_int(
@@ -7685,11 +7730,6 @@ class TestYourResourceService(TestCase):
 
     def test_parse_item_filters_raises_validation_errors(self):
         """It should raise ValidationError for invalid filters (covers shopcarts.py line 518-554)"""
-        from service.resources.shopcarts import (
-            _parse_item_filters,
-            ValidationError,
-        )  # pylint: disable=import-outside-toplevel
-
         # Test single unsupported filter
         with self.assertRaises(ValidationError) as context:
             _parse_item_filters({"unsupported": "value"})
@@ -7781,10 +7821,6 @@ class TestYourResourceService(TestCase):
 
     def test_shopcart_list_abort_on_not_found_error(self):
         """It should abort on NotFoundError (covers shopcarts.py line 617)"""
-        from service.resources.shopcarts import (
-            NotFoundError,
-        )  # pylint: disable=import-outside-toplevel
-
         # Mock _parse_list_filters to raise NotFoundError
         with patch(  # pylint: disable=redefined-outer-name
             "service.resources.shopcarts._parse_list_filters",
@@ -7840,10 +7876,6 @@ class TestYourResourceService(TestCase):
 
     def test_find_existing_item_returns_item(self):
         """It should return item when found (covers shopcarts.py line 248)"""
-        from service.resources.shopcarts import (
-            _find_existing_item,
-        )  # pylint: disable=import-outside-toplevel
-
         cart = ShopcartFactory(status="active")
         cart.create()
         item = ShopcartItemFactory(shopcart_id=cart.id, product_id=100)
@@ -7856,19 +7888,12 @@ class TestYourResourceService(TestCase):
 
     def test_require_quantity_increment_from_payload_returns_increment(self):
         """It should return increment when valid (covers shopcarts.py line 231)"""
-        # pylint: disable=import-outside-toplevel
-        from service.resources.shopcarts import _require_quantity_increment_from_payload
-
         # Test that it returns the increment when valid
         result = _require_quantity_increment_from_payload({"quantity": 5})
         self.assertEqual(result, 5)
 
     def test_find_shopcart_by_id_or_customer_returns_shopcart(self):
         """It should return shopcart when found (covers shopcarts.py line 204)"""
-        from service.resources.shopcarts import (
-            _find_shopcart_by_id_or_customer,
-        )  # pylint: disable=import-outside-toplevel
-
         cart = ShopcartFactory(status="active")
         cart.create()
 
@@ -7879,20 +7904,12 @@ class TestYourResourceService(TestCase):
 
     def test_normalize_description_filter_returns_description(self):
         """It should return description when valid (covers shopcarts.py line 503)"""
-        from service.resources.shopcarts import (
-            _normalize_description_filter,
-        )  # pylint: disable=import-outside-toplevel
-
         # Test that it returns the description when valid
         result = _normalize_description_filter("valid description")
         self.assertEqual(result, "valid description")
 
     def test_parse_item_filters_returns_filters(self):
         """It should return filters when valid (covers shopcarts.py line 554)"""
-        from service.resources.shopcarts import (
-            _parse_item_filters,
-        )  # pylint: disable=import-outside-toplevel
-
         # Test that it returns filters when valid
         result = _parse_item_filters({"product_id": "100", "quantity": "2"})
         self.assertIsNotNone(result)
@@ -8047,10 +8064,6 @@ class TestYourResourceService(TestCase):
 
     def test_resolve_price_for_new_item_with_existing_item_none_price(self):
         """It should return existing item price when price_raw is None (covers shopcarts.py line 237)"""
-        from service.resources.shopcarts import (
-            _resolve_price_for_new_item,
-        )  # pylint: disable=import-outside-toplevel
-
         cart = ShopcartFactory(status="active")
         cart.create()
         item = ShopcartItemFactory(
@@ -8064,10 +8077,6 @@ class TestYourResourceService(TestCase):
 
     def test_get_update_response_item_found_and_matches_shopcart(self):
         """It should return item when found by id and matches shopcart (covers shopcarts.py line 302-304)"""
-        from service.resources.shopcarts import (
-            _get_update_response,
-        )  # pylint: disable=import-outside-toplevel
-
         cart = ShopcartFactory(status="active")
         cart.create()
         item = ShopcartItemFactory(shopcart_id=cart.id, product_id=100)
@@ -8117,11 +8126,6 @@ class TestYourResourceService(TestCase):
 
     def test_apply_item_filters_all_conditions_directly(self):
         """It should test _apply_item_filters function directly (covers shopcarts.py line 559-569)"""
-        from service.resources.shopcarts import (
-            _apply_item_filters,
-            ItemFilters,
-        )  # pylint: disable=import-outside-toplevel
-
         cart = ShopcartFactory(status="active")
         cart.create()
         item1 = ShopcartItemFactory(
@@ -8245,7 +8249,7 @@ class TestYourResourceService(TestCase):
             self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_put_item_customer_id_mismatch_abort_by_id(self):
-        """It should abort when shopcart found by id but customer_id doesn't match (covers shopcarts.py line 913)"""
+        """It should abort when shopcart found by id but customer_id doesn't match (covers shopcarts.py line 920)"""
         # Create shopcart with specific customer_id
         cart = ShopcartFactory(status="active", customer_id=1000)
         cart.create()
@@ -8258,21 +8262,26 @@ class TestYourResourceService(TestCase):
 
         # Try to update item using cart2.id as customer_id
         # When shopcart is found by id (cart2.id) but customer_id doesn't match (cart2.customer_id != cart2.id)
-        # This should trigger the abort at line 913
-        if cart2.id != cart2.customer_id:
-            resp = self.client.put(
-                f"{BASE_URL}/{cart2.id}/items/{item.product_id}",
-                json={"quantity": 5},
-                content_type="application/json",
-            )
-            # Should return 404 from the abort at line 913
-            self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
-            data = resp.get_json()
-            self.assertIn("message", data)
-            self.assertIn("was not found", data["message"])
+        # This should trigger the abort at line 920
+        # Ensure cart2.id != cart2.customer_id for the test to work
+        test_id = cart2.id
+        # If by chance they're equal, use cart.id instead
+        if test_id == cart2.customer_id:
+            test_id = cart.id
+
+        resp = self.client.put(
+            f"{BASE_URL}/{test_id}/items/{item.product_id}",
+            json={"quantity": 5},
+            content_type="application/json",
+        )
+        # Should return 404 from the abort at line 920
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+        data = resp.get_json()
+        self.assertIn("message", data)
+        self.assertIn("was not found", data["message"])
 
     def test_delete_item_validation_error_handling_complete(self):
-        """It should handle ValidationError in delete method completely (covers shopcarts.py line 959-991)"""
+        """It should handle ValidationError in delete method completely (covers shopcarts.py line 966-998)"""
         cart = ShopcartFactory(status="active")
         cart.create()
         item = ShopcartItemFactory(shopcart_id=cart.id, product_id=100)
@@ -8284,10 +8293,14 @@ class TestYourResourceService(TestCase):
         cart2.create()
 
         # Try to delete item using cart2.id as customer_id when cart2.customer_id != cart2.id
-        # This should trigger the fallback logic
-        if cart2.id != cart2.customer_id:
-            resp = self.client.delete(f"{BASE_URL}/{cart2.id}/items/{item.id}")
-            # Should return 404 because item doesn't belong to cart2
-            self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
-            data = resp.get_json()
-            self.assertIn("message", data)
+        # This should trigger the fallback logic and cover line 966 (try statement)
+        test_id = cart2.id
+        # If by chance they're equal, use cart.id instead
+        if test_id == cart2.customer_id:
+            test_id = cart.id
+
+        resp = self.client.delete(f"{BASE_URL}/{test_id}/items/{item.id}")
+        # Should return 404 because item doesn't belong to cart2
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+        data = resp.get_json()
+        self.assertIn("message", data)
