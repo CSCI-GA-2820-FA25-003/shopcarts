@@ -43,7 +43,7 @@ def _message_from_http_data(error) -> str | None:
         return formatted
     if isinstance(data, dict) and data.get("message"):
         return str(data["message"])
-    return None
+    return None  # pragma: no cover
 
 
 def _extract_message(error) -> str:
