@@ -1640,6 +1640,62 @@ class TestYourResourceService(TestCase):
         resp = self.client.get(f"{BASE_URL}/999999/totals")
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
+    def test_get_shopcart_totals_with_zero_quantity_item(self):
+        """It should handle items with zero quantity correctly (covers shopcarts.py line 1008)"""
+        cart = self._create_cart(customer_id=8603)
+        # Add an item with zero quantity
+        item = ShopcartItemFactory(
+            shopcart_id=cart.id,
+            product_id=5001,
+            quantity=0,
+            price=Decimal("10.00"),
+        )
+        item.create()
+        # Add another item with normal quantity
+        item2 = ShopcartItemFactory(
+            shopcart_id=cart.id,
+            product_id=5002,
+            quantity=3,
+            price=Decimal("5.00"),
+        )
+        item2.create()
+        db.session.refresh(cart)
+        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/totals")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.get_json()
+        self.assertEqual(data["item_count"], 2)
+        self.assertEqual(data["total_quantity"], 3)  # Only item2 contributes
+        self.assertAlmostEqual(data["subtotal"], 15.00, places=2)  # 3 * 5.00
+
+    def test_get_shopcart_totals_with_multiple_items_mixed_quantities(self):
+        """It should correctly calculate totals with multiple items of different quantities (covers shopcarts.py line 1007-1015)"""
+        cart = self._create_cart(customer_id=8604)
+        # Add items with various quantities
+        items_data = [
+            (7001, Decimal("10.00"), 1),
+            (7002, Decimal("5.50"), 2),
+            (7003, Decimal("3.25"), 0),  # Zero quantity item
+            (7004, Decimal("8.75"), 3),
+        ]
+        for product_id, price, quantity in items_data:
+            item = ShopcartItemFactory(
+                shopcart_id=cart.id,
+                product_id=product_id,
+                quantity=quantity,
+                price=price,
+            )
+            item.create()
+        db.session.refresh(cart)
+        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/totals")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.get_json()
+        self.assertEqual(data["item_count"], 4)
+        self.assertEqual(data["total_quantity"], 6)  # 1 + 2 + 0 + 3
+        # Subtotal: 10.00*1 + 5.50*2 + 3.25*0 + 8.75*3 = 10.00 + 11.00 + 0 + 26.25 = 47.25
+        self.assertAlmostEqual(data["subtotal"], 47.25, places=2)
+        self.assertAlmostEqual(data["discount"], 0.0, places=2)
+        self.assertAlmostEqual(data["total"], 47.25, places=2)
+
     def test_list_items_in_nonexistent_shopcart(self):
         """It should return 404 if the shopcart does not exist"""
         resp = self.client.get("/api/shopcarts/999/items")
