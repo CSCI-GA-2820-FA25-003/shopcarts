@@ -38,14 +38,16 @@ install: ## Install Python dependencies
 .PHONY: lint
 lint: ## Run the linter
 	$(info Running linting...)
-	-flake8 service tests --count --select=E9,F63,F7,F82 --show-source --statistics
-	-flake8 service tests --count --max-complexity=10 --max-line-length=127 --statistics
-	-pylint service tests --max-line-length=127
+	pipenv sync --dev --bare >/dev/null
+	pipenv run flake8 service tests --count --select=E9,F63,F7,F82 --show-source --statistics
+	pipenv run flake8 service tests --count --max-complexity=10 --max-line-length=127 --statistics
+	pipenv run pylint service tests --max-line-length=127 --fail-under=10
 
 .PHONY: test
 test: ## Run the unit tests
 	$(info Running tests...)
-	export RETRY_COUNT=1; pytest --pspec --cov=service --cov-fail-under=95 --disable-warnings
+	pipenv sync --dev --bare >/dev/null
+	export RETRY_COUNT=1; pipenv run pytest --pspec --cov=service --cov-fail-under=95 --disable-warnings
 
 .PHONY: bdd
 bdd: ## Run the Behave Selenium UI scenarios (service must be running)

@@ -1,4 +1,3 @@
-"""
-Resources package for Flask-RESTX API endpoints
-"""
+"""Resource package for Flask-RESTX namespaces."""
 
+__all__ = ["shopcarts"]
