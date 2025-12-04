@@ -1,0 +1,42 @@
+apiVersion: triggers.tekton.dev/v1beta1
+kind: EventListener
+metadata:
+  name: shopcarts-listener
+  namespace: shopcarts
+  labels:
+    app.kubernetes.io/name: shopcarts
+    app.kubernetes.io/component: tekton-trigger
+spec:
+  serviceAccountName: pipeline
+  triggers:
+    - name: shopcarts-github-trigger
+      bindings:
+        - ref: shopcarts-github-binding
+      template:
+        ref: shopcarts-pipeline-template
+      interceptors:
+        # 只處理 push 事件到 master 分支
+        - ref:
+            name: "github"
+            kind: ClusterInterceptor
+          params:
+            - name: "secretRef"
+              value:
+                secretName: github-webhook-secret
+                secretKey: secretToken
+            - name: "eventTypes"
+              value:
+                - "push"
+        # CEL interceptor 用於過濾分支
+        - ref:
+            name: "cel"
+            kind: ClusterInterceptor
+          params:
+            - name: "filter"
+              value: |
+                body.ref == 'refs/heads/master' || body.ref == 'refs/heads/main'
+            - name: "overlays"
+              value:
+                - key: truncated_sha
+                  expression: "body.after[0:7]"
+
