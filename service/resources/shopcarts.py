@@ -638,7 +638,7 @@ class ReactivateResource(Resource):
 class ShopcartItemsCollectionResource(Resource):
     """Manage items within a shopcart."""
 
-    @ns.expect(shopcart_item_payload)
+    @ns.expect(shopcart_item_payload, validate=True)
     @ns.marshal_with(shopcart_item_model, code=status.HTTP_201_CREATED)
     def post(self, customer_id):
         """Add an item to a shopcart."""

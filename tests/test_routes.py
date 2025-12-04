@@ -28,9 +28,9 @@ from datetime import datetime, timezone
 from werkzeug.exceptions import HTTPException
 from wsgi import app
 from service.common import status
-from service.models import db, Shopcart, ShopcartItem, DataValidationError
-from service.common import error_handlers
+from service.models import db, Shopcart, ShopcartItem
 from service import routes
+from service.resources import shopcarts
 from .factories import ShopcartFactory, ShopcartItemFactory
 
 DATABASE_URI = os.getenv(
@@ -77,7 +77,7 @@ class TestYourResourceService(TestCase):
     ############################################################
     def _create_shopcarts(self, count: int = 1) -> list:
         """Factory method to create shopcarts in bulk"""
-        shopcarts = []
+        cart_list = []
         for _ in range(count):
             test_shopcart = ShopcartFactory()
             response = self.client.post(BASE_URL, json=test_shopcart.serialize())
@@ -88,8 +88,8 @@ class TestYourResourceService(TestCase):
             )
             new_shopcart = response.get_json()
             test_shopcart.id = new_shopcart["id"]
-            shopcarts.append(test_shopcart)
-        return shopcarts
+            cart_list.append(test_shopcart)
+        return cart_list
 
     def _create_shopcart_for_customer(
         self, customer_id: int, status_value: str = "active"
@@ -288,8 +288,8 @@ class TestYourResourceService(TestCase):
 
     def test_list_shopcarts(self):
         """It should list all shopcarts"""
-        shopcarts = self._create_shopcarts(3)
-        self.assertEqual(len(shopcarts), 3)
+        cart_list = self._create_shopcarts(3)
+        self.assertEqual(len(cart_list), 3)
 
         response = self.client.get(BASE_URL)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -1294,7 +1294,10 @@ class TestYourResourceService(TestCase):
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("quantity", resp.get_json()["message"])
+        data = resp.get_json()
+        message = data.get("message", "")
+        errors = data.get("errors", {})
+        self.assertTrue("quantity" in message or "quantity" in str(errors))
 
     def test_add_item_quantity_must_be_positive(self):
         """It should reject zero or negative quantities"""
@@ -1338,6 +1341,18 @@ class TestYourResourceService(TestCase):
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_require_quantity_increment_non_integer(self):
+        """Helper should reject non-integer quantity payloads."""
+        with self.assertRaises(HTTPException) as ctx, app.test_request_context():
+            shopcarts._require_quantity_increment({"quantity": object()})  # pylint: disable=protected-access
+        self.assertEqual(ctx.exception.code, status.HTTP_400_BAD_REQUEST)
+
+    def test_resolve_price_invalid_value(self):
+        """Helper should reject invalid price payloads."""
+        with self.assertRaises(HTTPException) as ctx, app.test_request_context():
+            shopcarts._resolve_price(None, "not-a-number")  # pylint: disable=protected-access
+        self.assertEqual(ctx.exception.code, status.HTTP_400_BAD_REQUEST)
 
     def test_add_item_existing_product_increments_quantity(self):
         """It should merge with existing items and reuse stored price when price omitted"""
@@ -1665,42 +1680,36 @@ class TestYourResourceService(TestCase):
                 routes.check_content_type("application/json")
         self.assertEqual(raised.exception.code, status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
 
-    def test_error_handlers(self):
-        """It should format error responses correctly"""
-        resp, code = error_handlers.bad_request("bad request")
-        self.assertEqual(code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(resp.json["error"], "Bad Request")
-
-        resp, code = error_handlers.not_found("missing")
-        self.assertEqual(code, status.HTTP_404_NOT_FOUND)
-        self.assertEqual(resp.json["error"], "Not Found")
-
-        resp, code = error_handlers.method_not_supported("wrong method")
-        self.assertEqual(code, status.HTTP_405_METHOD_NOT_ALLOWED)
-        self.assertEqual(resp.json["error"], "Method not Allowed")
-
-        resp, code = error_handlers.mediatype_not_supported("bad media")
-        self.assertEqual(code, status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
-        self.assertEqual(resp.json["error"], "Unsupported media type")
-
-        resp, code = error_handlers.internal_server_error("boom")
-        self.assertEqual(code, status.HTTP_500_INTERNAL_SERVER_ERROR)
-        self.assertEqual(resp.json["error"], "Internal Server Error")
-
-        resp, code = error_handlers.request_validation_error(
-            DataValidationError("validation failed")
+    def test_restx_validation_returns_json(self):
+        """Invalid payloads should return JSON with 400 status"""
+        resp = self.client.post(
+            BASE_URL,
+            json={"status": "active"},  # missing required customer_id
+            headers={"Content-Type": "application/json"},
         )
-        self.assertEqual(code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(resp.json["message"], "validation failed")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("application/json", resp.headers.get("Content-Type", ""))
+        data = resp.get_json()
+        self.assertIsInstance(data, dict)
+        self.assertIn("message", data)
 
-        resp, code = error_handlers.forbidden("denied")
-        self.assertEqual(code, status.HTTP_403_FORBIDDEN)
-        self.assertEqual(resp.json["message"], "denied")
+    def test_not_found_returns_json(self):
+        """404 responses should be JSON with proper content type"""
+        resp = self.client.get(f"{BASE_URL}/999999")
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn("application/json", resp.headers.get("Content-Type", ""))
+        data = resp.get_json()
+        self.assertIsInstance(data, dict)
+        self.assertIn("message", data)
+        self.assertIn("not found", data["message"].lower())
 
-        resp, code = error_handlers.unauthorized("no auth")
-        self.assertEqual(code, status.HTTP_401_UNAUTHORIZED)
-        self.assertEqual(resp.json["message"], "no auth")
-
-        resp, code = error_handlers.resource_conflict("duplicate")
-        self.assertEqual(code, status.HTTP_409_CONFLICT)
-        self.assertEqual(resp.json["message"], "duplicate")
+    def test_unhandled_exception_returns_json(self):
+        """Unhandled exceptions should produce JSON 500 responses"""
+        with patch("service.resources.shopcarts.Shopcart.find_by_customer_id", side_effect=RuntimeError("boom")):
+            resp = self.client.get(f"{BASE_URL}/123456")
+        self.assertEqual(resp.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
+        self.assertIn("application/json", resp.headers.get("Content-Type", ""))
+        data = resp.get_json()
+        self.assertIsInstance(data, dict)
+        self.assertIn("message", data)
+        self.assertIn("error", data)

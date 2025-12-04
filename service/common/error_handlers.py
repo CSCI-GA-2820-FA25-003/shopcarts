@@ -1,149 +1,104 @@
-######################################################################
-# Copyright 2016, 2024 John J. Rofrano. All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# https://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-######################################################################
-"""
-Module: error_handlers
-"""
-from flask import jsonify
-from flask import current_app as app  # Import Flask application
+"""Centralized JSON error handling for the service."""
+
+from flask import current_app as app, jsonify
+from flask_restx.errors import ValidationError
+from werkzeug.exceptions import HTTPException
+
 from service.models import DataValidationError
 from . import status
 
 
+def _format_error_details(errors) -> str | None:
+    """Format validation error details into a readable string."""
+    if not errors:
+        return None
+    if isinstance(errors, dict):
+        return "; ".join(f"{field}: {msg}" for field, msg in errors.items())
+    return str(errors)
+
+
+def _message_from_validation_error(error) -> str | None:
+    """Extract messages from Flask-RESTX ValidationError instances."""
+    if not isinstance(error, ValidationError):
+        return None
+    data = getattr(error, "data", {}) or {}
+    formatted = _format_error_details(data.get("errors") if isinstance(data, dict) else None)
+    if formatted:
+        return formatted
+    fallback = (
+        data.get("message")
+        if isinstance(data, dict)
+        else None
+    ) or getattr(error, "message", None) or getattr(error, "description", None)
+    return str(fallback) if fallback else None
+
+
+def _message_from_http_data(error) -> str | None:
+    """Extract messages from HTTPException-like objects carrying .data."""
+    data = getattr(error, "data", None)
+    if data is None:
+        return None
+    formatted = _format_error_details(data.get("errors") if isinstance(data, dict) else None)
+    if formatted:
+        return formatted
+    if isinstance(data, dict) and data.get("message"):
+        return str(data["message"])
+    return None
+
+
 def _extract_message(error) -> str:
-    """Return the original description for the error if available."""
-    description = getattr(error, "description", None)
-    if description:
-        return description
+    """Return a human-friendly message for the given error."""
+    resolvers = (
+        _message_from_validation_error,
+        _message_from_http_data,
+        lambda err: getattr(err, "description", None),
+        lambda err: getattr(err, "message", None),
+    )
+    for resolver in resolvers:
+        message = resolver(error)
+        if message:
+            return str(message)
     return str(error)
 
 
-######################################################################
-# Error Handlers
-######################################################################
+def _json_error(code: int, error_name: str, message: str, *, log_as_error: bool = False):
+    """Build and log a JSON error response."""
+    logger = app.logger.error if log_as_error else app.logger.warning
+    logger(message)
+    return jsonify(status=code, error=error_name, message=message), code
+
+
 @app.errorhandler(DataValidationError)
-def request_validation_error(error):
-    """Handles Value Errors from bad data"""
-    return bad_request(error)
+@app.errorhandler(ValidationError)
+def handle_validation_error(error):
+    """Return 400 for validation failures with a JSON body."""
+    return _json_error(status.HTTP_400_BAD_REQUEST, "Bad Request", _extract_message(error))
 
 
-@app.errorhandler(status.HTTP_400_BAD_REQUEST)
-def bad_request(error):
-    """Handles bad requests with 400_BAD_REQUEST"""
+@app.errorhandler(HTTPException)
+def handle_http_exception(error):
+    """Ensure all HTTPException responses are JSON."""
+    code = getattr(error, "code", status.HTTP_500_INTERNAL_SERVER_ERROR)
+    name = getattr(error, "name", "HTTPException")
     message = _extract_message(error)
-    app.logger.warning(message)
-    return (
-        jsonify(
-            status=status.HTTP_400_BAD_REQUEST, error="Bad Request", message=message
-        ),
-        status.HTTP_400_BAD_REQUEST,
-    )
+    return _json_error(code, name, message, log_as_error=code >= 500)
 
 
-@app.errorhandler(status.HTTP_404_NOT_FOUND)
-def not_found(error):
-    """Handles resources not found with 404_NOT_FOUND"""
-    message = _extract_message(error)
-    app.logger.warning(message)
-    return (
-        jsonify(status=status.HTTP_404_NOT_FOUND, error="Not Found", message=message),
-        status.HTTP_404_NOT_FOUND,
-    )
-
-
-@app.errorhandler(status.HTTP_405_METHOD_NOT_ALLOWED)
-def method_not_supported(error):
-    """Handles unsupported HTTP methods with 405_METHOD_NOT_SUPPORTED"""
-    message = _extract_message(error)
-    app.logger.warning(message)
-    return (
-        jsonify(
-            status=status.HTTP_405_METHOD_NOT_ALLOWED,
-            error="Method not Allowed",
-            message=message,
-        ),
-        status.HTTP_405_METHOD_NOT_ALLOWED,
-    )
-
-
-@app.errorhandler(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
-def mediatype_not_supported(error):
-    """Handles unsupported media requests with 415_UNSUPPORTED_MEDIA_TYPE"""
-    message = _extract_message(error)
-    app.logger.warning(message)
-    return (
-        jsonify(
-            status=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            error="Unsupported media type",
-            message=message,
-        ),
-        status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-    )
-
-
-@app.errorhandler(status.HTTP_403_FORBIDDEN)
-def forbidden(error):
-    """Handles forbidden requests with 403_FORBIDDEN"""
-    message = _extract_message(error)
-    app.logger.warning(message)
-    return (
-        jsonify(status=status.HTTP_403_FORBIDDEN, error="Forbidden", message=message),
-        status.HTTP_403_FORBIDDEN,
-    )
-
-
-@app.errorhandler(status.HTTP_401_UNAUTHORIZED)
-def unauthorized(error):
-    """Handles missing or bad credentials with 401_UNAUTHORIZED"""
-    message = _extract_message(error)
-    app.logger.warning(message)
-    return (
-        jsonify(
-            status=status.HTTP_401_UNAUTHORIZED,
-            error="Unauthorized",
-            message=message,
-        ),
-        status.HTTP_401_UNAUTHORIZED,
-    )
-
-
-@app.errorhandler(status.HTTP_409_CONFLICT)
-def resource_conflict(error):
-    """Handles conflicts with 409_CONFLICT"""
-    message = _extract_message(error)
-    app.logger.warning(message)
-    return (
-        jsonify(
-            status=status.HTTP_409_CONFLICT,
-            error="Conflict",
-            message=message,
-        ),
-        status.HTTP_409_CONFLICT,
-    )
-
-
-@app.errorhandler(status.HTTP_500_INTERNAL_SERVER_ERROR)
-def internal_server_error(error):
-    """Handles unexpected server error with 500_SERVER_ERROR"""
-    message = _extract_message(error)
-    app.logger.error(message)
-    return (
-        jsonify(
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            error="Internal Server Error",
-            message=message,
-        ),
+@app.errorhandler(Exception)
+def handle_unhandled_exception(error):
+    """Catch-all handler to guarantee JSON 500 responses."""
+    app.logger.exception("Unhandled exception: %s", error)
+    return _json_error(
         status.HTTP_500_INTERNAL_SERVER_ERROR,
+        "Internal Server Error",
+        "An unexpected error occurred.",
+        log_as_error=True,
     )
+
+
+# Convenience exports for any direct tests/imports
+__all__ = [
+    "handle_http_exception",
+    "handle_unhandled_exception",
+    "handle_validation_error",
+]
