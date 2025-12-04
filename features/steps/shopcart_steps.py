@@ -8,6 +8,7 @@ from __future__ import annotations
 import re
 import time
 from decimal import Decimal
+from urllib.parse import urljoin
 
 import requests
 from behave import given, when, then
@@ -60,7 +61,7 @@ def add_item_via_api(
 
 
 def api_url(context, path: str) -> str:
-    return _api_url(context, path)
+    return urljoin(context.base_url + "/", path.lstrip("/"))
 
 
 def query_form(context):
@@ -167,8 +168,7 @@ def step_impl_on_create_form(context):
 
 @given("the service is running")
 def step_impl_service_running(context):
-    # health is intentionally unprefixed (not under /api)
-    response = requests.get(f"{context.base_url}/health", timeout=10)
+    response = requests.get(api_url(context, "health"), timeout=10)
     response.raise_for_status()
 
 
@@ -1134,18 +1134,18 @@ def step_impl_shopcart_exists(context, customer_id):
     context.created_customer_ids.add(customer_id)
 
 
-@when('I send a PATCH request to "/api/shopcarts/{customer_id:d}/lock"')
+@when('I send a PATCH request to "/shopcarts/{customer_id:d}/lock"')
 def step_impl_patch_lock(context, customer_id):
     """Send a PATCH request to lock a shopcart."""
-    url = _api_url(context, f"shopcarts/{customer_id}/lock")
+    url = urljoin(context.base_url + "/", f"shopcarts/{customer_id}/lock")
     context.response = requests.patch(url, timeout=10)
     context.customer_id = customer_id
 
 
-@when('I send a PATCH request to "/api/shopcarts/{customer_id:d}/expire"')
+@when('I send a PATCH request to "/shopcarts/{customer_id:d}/expire"')
 def step_impl_patch_expire(context, customer_id):
     """Send a PATCH request to expire a shopcart."""
-    url = _api_url(context, f"shopcarts/{customer_id}/expire")
+    url = urljoin(context.base_url + "/", f"shopcarts/{customer_id}/expire")
     context.response = requests.patch(url, timeout=10)
     context.customer_id = customer_id
 

@@ -1,4 +1,4 @@
-const API_BASE = "/api/shopcarts";
+const API_BASE = "/shopcarts";
 const actionEndpoints = {
   checkout: "checkout",
   cancel: "cancel",
