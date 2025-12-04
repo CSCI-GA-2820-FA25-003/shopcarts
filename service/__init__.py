@@ -46,7 +46,6 @@ def create_app():
 
     # Initialize Flask-RESTX API
     api.init_app(app)
-    register_namespaces()
 
     with app.app_context():
         from service.resources.shopcarts import ns as shopcart_ns  # noqa: E402
@@ -56,7 +55,11 @@ def create_app():
         from service import routes, models  # noqa: F401 E402
         from service.common import error_handlers, cli_commands  # noqa: F401, E402
 
+        # Register shopcarts namespace first to ensure customer_id routes match before shopcart_id routes
+        # This allows /api/shopcarts/<customer_id>/items/<product_id> to work correctly
         api.add_namespace(shopcart_ns)
+        # Then register items namespace (uses shopcart_id)
+        register_namespaces()
 
         try:
             db.create_all()

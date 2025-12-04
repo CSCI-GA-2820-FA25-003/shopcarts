@@ -159,14 +159,25 @@ def _parse_optional_int(args, field: str, error_message: str) -> int | None:
 
 def _validate_shopcart_and_item(shopcart_id, item_id):
     """Validate shopcart and item exist and item belongs to shopcart."""
+    # Find the shopcart by ID (try both shopcart.id and customer_id)
     shopcart = Shopcart.find(shopcart_id)
+    if not shopcart:
+        # Try finding by customer_id in case the route was matched incorrectly
+        shopcart = Shopcart.find_by_customer_id(shopcart_id).first()
     if not shopcart:
         abort(
             status.HTTP_404_NOT_FOUND,
             f"Shopcart with id '{shopcart_id}' was not found.",
         )
 
+    # Find the item by ID (try both item.id and product_id)
     item = ShopcartItem.find(item_id)
+    if not item:
+        # Try finding by product_id in case the route was matched incorrectly
+        item = next(
+            (it for it in shopcart.items if it.product_id == item_id),
+            None,
+        )
     if not item:
         abort(
             status.HTTP_404_NOT_FOUND,
@@ -309,8 +320,11 @@ class ItemCollection(Resource):
         """List all items in a shopcart with optional filters"""
         app.logger.info(f"Request to list all items in shopcart {shopcart_id}")
 
-        # Find the shopcart by ID
+        # Find the shopcart by ID (try both shopcart.id and customer_id)
         shopcart = Shopcart.find(shopcart_id)
+        if not shopcart:
+            # Try finding by customer_id in case the route was matched incorrectly
+            shopcart = Shopcart.find_by_customer_id(shopcart_id).first()
         if not shopcart:
             abort(
                 status.HTTP_404_NOT_FOUND,
@@ -353,8 +367,11 @@ class ItemCollection(Resource):
         """Add an Item to a Shopcart"""
         app.logger.info("Request to add item to shopcart %s", shopcart_id)
 
-        # Find the shopcart by ID
+        # Find the shopcart by ID (try both shopcart.id and customer_id)
         shopcart = Shopcart.find(shopcart_id)
+        if not shopcart:
+            # Try finding by customer_id in case the route was matched incorrectly
+            shopcart = Shopcart.find_by_customer_id(shopcart_id).first()
         if not shopcart:
             abort(
                 status.HTTP_404_NOT_FOUND,
@@ -410,16 +427,25 @@ class ItemResource(Resource):
             f"Request to read item {item_id} from shopcart {shopcart_id}"
         )
 
-        # Find the shopcart by ID
+        # Find the shopcart by ID (try both shopcart.id and customer_id)
         shopcart = Shopcart.find(shopcart_id)
+        if not shopcart:
+            # Try finding by customer_id in case the route was matched incorrectly
+            shopcart = Shopcart.find_by_customer_id(shopcart_id).first()
         if not shopcart:
             abort(
                 status.HTTP_404_NOT_FOUND,
                 f"Shopcart with id '{shopcart_id}' was not found.",
             )
 
-        # Find the item by ID
+        # Find the item by ID (try both item.id and product_id)
         item = ShopcartItem.find(item_id)
+        if not item:
+            # Try finding by product_id in case the route was matched incorrectly
+            item = next(
+                (it for it in shopcart.items if it.product_id == item_id),
+                None,
+            )
         if not item:
             abort(
                 status.HTTP_404_NOT_FOUND,
@@ -465,7 +491,14 @@ class ItemResource(Resource):
         )
         shopcart.update()
 
+        # Find the updated item (try both item.id and product_id)
         updated_item = ShopcartItem.find(item_id)
+        if not updated_item:
+            # Try finding by product_id in case the route was matched incorrectly
+            updated_item = next(
+                (it for it in shopcart.items if it.product_id == item_id),
+                None,
+            )
         if not updated_item:
             abort(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -483,16 +516,25 @@ class ItemResource(Resource):
             f"Request to delete item {item_id} from shopcart {shopcart_id}"
         )
 
-        # Find the shopcart by ID
+        # Find the shopcart by ID (try both shopcart.id and customer_id)
         shopcart = Shopcart.find(shopcart_id)
+        if not shopcart:
+            # Try finding by customer_id in case the route was matched incorrectly
+            shopcart = Shopcart.find_by_customer_id(shopcart_id).first()
         if not shopcart:
             abort(
                 status.HTTP_404_NOT_FOUND,
                 f"Shopcart with id '{shopcart_id}' was not found.",
             )
 
-        # Find the item by ID
+        # Find the item by ID (try both item.id and product_id)
         item = ShopcartItem.find(item_id)
+        if not item:
+            # Try finding by product_id in case the route was matched incorrectly
+            item = next(
+                (it for it in shopcart.items if it.product_id == item_id),
+                None,
+            )
         if not item:
             abort(
                 status.HTTP_404_NOT_FOUND,

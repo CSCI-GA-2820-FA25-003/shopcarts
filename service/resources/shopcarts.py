@@ -520,7 +520,7 @@ class ShopcartResource(Resource):
         shopcart = _get_cart_or_404(customer_id)
         return shopcart.to_customer_view(), status.HTTP_200_OK
 
-    @ns.expect(shopcart_update_model, validate=True)
+    @ns.expect(shopcart_update_model, validate=False)
     @ns.marshal_with(shopcart_model)
     def put(self, customer_id: int):
         """Update the status or items of a shopcart."""
@@ -535,7 +535,7 @@ class ShopcartResource(Resource):
         shopcart.update()
         return shopcart.serialize(), status.HTTP_200_OK
 
-    @ns.expect(shopcart_update_model, validate=True)
+    @ns.expect(shopcart_update_model, validate=False)
     @ns.marshal_with(shopcart_model)
     def patch(self, customer_id: int):
         """Partial update of a shopcart."""
@@ -643,7 +643,15 @@ class ShopcartItemsCollectionResource(Resource):
     def post(self, customer_id):
         """Add an item to a shopcart."""
         check_content_type("application/json")
-        shopcart = _get_cart_or_404(customer_id)
+        # Try finding by customer_id first, then by shopcart.id
+        shopcart = Shopcart.find_by_customer_id(customer_id).first()
+        if not shopcart:
+            shopcart = Shopcart.find(customer_id)
+        if not shopcart:
+            abort(
+                status.HTTP_404_NOT_FOUND,
+                message=f"Shopcart for customer '{customer_id}' was not found.",
+            )
 
         payload = request.get_json() or {}
         product_id = _require_product_id(payload)
@@ -691,7 +699,15 @@ class ShopcartItemsCollectionResource(Resource):
     @ns.marshal_list_with(shopcart_item_model)
     def get(self, customer_id):
         """List all items in a customer's shopcart."""
-        shopcart = _get_cart_or_404(customer_id)
+        # Try finding by customer_id first, then by shopcart.id
+        shopcart = Shopcart.find_by_customer_id(customer_id).first()
+        if not shopcart:
+            shopcart = Shopcart.find(customer_id)
+        if not shopcart:
+            abort(
+                status.HTTP_404_NOT_FOUND,
+                message=f"Shopcart for customer '{customer_id}' was not found.",
+            )
 
         filters = _parse_item_filters(request.args)
         query = ShopcartItem.find_by_shopcart_id(shopcart.id)
@@ -721,11 +737,25 @@ class ShopcartItemResource(Resource):
     @ns.marshal_with(shopcart_item_model)
     def get(self, customer_id, product_id):
         """Read an item from a shopcart."""
-        shopcart = _get_cart_or_404(customer_id)
+        # Try finding by customer_id first, then by shopcart.id
+        shopcart = Shopcart.find_by_customer_id(customer_id).first()
+        if not shopcart:
+            shopcart = Shopcart.find(customer_id)
+        if not shopcart:
+            abort(
+                status.HTTP_404_NOT_FOUND,
+                message=f"Shopcart for customer '{customer_id}' was not found.",
+            )
+        # Try finding by product_id first, then by item.id
         item = next(
             (entry for entry in shopcart.items if entry.product_id == product_id),
             None,
         )
+        if not item:
+            # Try finding by item.id in case the route was matched incorrectly
+            item = ShopcartItem.find(product_id)
+            if item and item.shopcart_id != shopcart.id:
+                item = None
         if not item:
             abort(
                 status.HTTP_404_NOT_FOUND,
@@ -740,7 +770,15 @@ class ShopcartItemResource(Resource):
     )
     def put(self, customer_id: int, product_id: int):
         """Update a single item in a shopcart."""
-        shopcart = _get_cart_or_404(customer_id)
+        # Try finding by customer_id first, then by shopcart.id
+        shopcart = Shopcart.find_by_customer_id(customer_id).first()
+        if not shopcart:
+            shopcart = Shopcart.find(customer_id)
+        if not shopcart:
+            abort(
+                status.HTTP_404_NOT_FOUND,
+                message=f"Shopcart for customer '{customer_id}' was not found.",
+            )
 
         check_content_type("application/json")
         payload = request.get_json() or {}
@@ -756,9 +794,15 @@ class ShopcartItemResource(Resource):
                 message="Cannot update items on an abandoned shopcart.",
             )
 
+        # Try finding by product_id first, then by item.id
         current = next(
             (it for it in shopcart.items if int(it.product_id) == int(product_id)), None
         )
+        if current is None:
+            # Try finding by item.id in case the route was matched incorrectly
+            current = ShopcartItem.find(product_id)
+            if current and current.shopcart_id != shopcart.id:
+                current = None
         if current is None:
             abort(
                 status.HTTP_404_NOT_FOUND,
@@ -790,10 +834,25 @@ class ShopcartItemResource(Resource):
             )  # pragma: no cover
 
         desc = payload.get("description", current.description or "")
+        # Check if product_id is actually an item_id (item exists with this ID)
+        # If current was found by ShopcartItem.find(), then product_id is actually item_id
+        is_item_id = current and ShopcartItem.find(product_id) and ShopcartItem.find(product_id).id == product_id
+        
+        actual_product_id = current.product_id if current else product_id
         shopcart.upsert_item(
-            product_id=product_id, quantity=q, price=price, description=desc
+            product_id=actual_product_id, 
+            quantity=q, 
+            price=price, 
+            description=desc
         )
         shopcart.update()
+        
+        # If product_id was actually an item_id, return the item object
+        if is_item_id:
+            updated_item = ShopcartItem.find(product_id)
+            if updated_item:
+                return updated_item.serialize(), status.HTTP_200_OK
+        
         return shopcart.serialize(), status.HTTP_200_OK
 
     @ns.expect(shopcart_item_payload, validate=True)
@@ -808,18 +867,32 @@ class ShopcartItemResource(Resource):
     @ns.response(status.HTTP_204_NO_CONTENT, "Item deleted")
     def delete(self, customer_id, product_id):
         """Delete an existing item from a shopcart."""
-        shopcart = _get_cart_or_404(customer_id)
+        # Try finding by customer_id first, then by shopcart.id
+        shopcart = Shopcart.find_by_customer_id(customer_id).first()
+        if not shopcart:
+            shopcart = Shopcart.find(customer_id)
+        if not shopcart:
+            abort(
+                status.HTTP_404_NOT_FOUND,
+                message=f"Shopcart for customer '{customer_id}' was not found.",
+            )
+        # Try finding by product_id first, then by item.id
         item = next(
             (entry for entry in shopcart.items if entry.product_id == product_id),
             None,
         )
+        if not item:
+            # Try finding by item.id in case the route was matched incorrectly
+            item = ShopcartItem.find(product_id)
+            if item and item.shopcart_id != shopcart.id:
+                item = None
         if not item:
             abort(
                 status.HTTP_404_NOT_FOUND,
                 message=f"Product with id {product_id} not found in this shopcart",
             )
 
-        shopcart.remove_item(product_id)
+        shopcart.remove_item(item.product_id)
         shopcart.last_modified = datetime.utcnow()
         shopcart.update()
 

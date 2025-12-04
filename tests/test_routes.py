@@ -1713,7 +1713,7 @@ class TestYourResourceService(TestCase):
         """It should create an item via the new API endpoint"""
         # Create a shopcart first
         resp = self.client.post(
-            "/shopcarts",
+            "/api/shopcarts",
             json={"customer_id": 1, "status": "active"},
             content_type="application/json",
         )
@@ -1742,7 +1742,7 @@ class TestYourResourceService(TestCase):
         """It should get an item via the new API endpoint"""
         # Create a shopcart and item
         resp = self.client.post(
-            "/shopcarts",
+            "/api/shopcarts",
             json={"customer_id": 1, "status": "active"},
             content_type="application/json",
         )
@@ -1768,7 +1768,7 @@ class TestYourResourceService(TestCase):
         """It should update an item via the new API endpoint"""
         # Create a shopcart and item
         resp = self.client.post(
-            "/shopcarts",
+            "/api/shopcarts",
             json={"customer_id": 1, "status": "active"},
             content_type="application/json",
         )
@@ -1798,7 +1798,7 @@ class TestYourResourceService(TestCase):
         """It should delete an item via the new API endpoint"""
         # Create a shopcart and item
         resp = self.client.post(
-            "/shopcarts",
+            "/api/shopcarts",
             json={"customer_id": 1, "status": "active"},
             content_type="application/json",
         )
@@ -1825,7 +1825,7 @@ class TestYourResourceService(TestCase):
         """It should list items via the new API endpoint"""
         # Create a shopcart
         resp = self.client.post(
-            "/shopcarts",
+            "/api/shopcarts",
             json={"customer_id": 1, "status": "active"},
             content_type="application/json",
         )
@@ -1856,7 +1856,7 @@ class TestYourResourceService(TestCase):
         """It should filter items via query parameters"""
         # Create a shopcart
         resp = self.client.post(
-            "/shopcarts",
+            "/api/shopcarts",
             json={"customer_id": 1, "status": "active"},
             content_type="application/json",
         )
@@ -1866,12 +1866,22 @@ class TestYourResourceService(TestCase):
         # Add items with different prices
         self.client.post(
             f"/api/shopcarts/{shopcart_id}/items",
-            json={"product_id": 101, "quantity": 1, "price": 5.00, "description": "Eco-friendly"},
+            json={
+                "product_id": 101,
+                "quantity": 1,
+                "price": 5.00,
+                "description": "Eco-friendly",
+            },
             content_type="application/json",
         )
         self.client.post(
             f"/api/shopcarts/{shopcart_id}/items",
-            json={"product_id": 102, "quantity": 2, "price": 10.00, "description": "Durable"},
+            json={
+                "product_id": 102,
+                "quantity": 2,
+                "price": 10.00,
+                "description": "Durable",
+            },
             content_type="application/json",
         )
 
@@ -1893,7 +1903,7 @@ class TestYourResourceService(TestCase):
         """It should return 404 for non-existent items"""
         # Create a shopcart
         resp = self.client.post(
-            "/shopcarts",
+            "/api/shopcarts",
             json={"customer_id": 1, "status": "active"},
             content_type="application/json",
         )
