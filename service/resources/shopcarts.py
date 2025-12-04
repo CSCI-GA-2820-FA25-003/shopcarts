@@ -174,6 +174,69 @@ def _parse_price_from_payload(payload, current_item: ShopcartItem) -> Decimal:
         abort(status.HTTP_400_BAD_REQUEST, message="price is invalid.")
 
 
+def _find_shopcart_by_id_or_customer(customer_id):
+    """Find shopcart by customer_id first, then by shopcart.id."""
+    shopcart = Shopcart.find_by_customer_id(customer_id).first()
+    if not shopcart:
+        shopcart = Shopcart.find(customer_id)
+    if not shopcart:
+        abort(
+            status.HTTP_404_NOT_FOUND,
+            message=f"Shopcart for customer '{customer_id}' was not found.",
+        )
+    return shopcart
+
+
+def _require_product_id_from_payload(payload):
+    """Extract and validate product_id from payload."""
+    try:
+        return int(payload["product_id"])
+    except (KeyError, TypeError, ValueError):
+        abort(
+            status.HTTP_400_BAD_REQUEST,
+            message="product_id is required and must be an integer.",
+        )
+        return None  # Never reached, but satisfies pylint
+
+
+def _require_quantity_increment_from_payload(payload):
+    """Validate quantity increment from payload."""
+    try:
+        increment = int(payload.get("quantity", 0))
+    except (TypeError, ValueError):
+        abort(status.HTTP_400_BAD_REQUEST, message="quantity must be an integer.")
+        return None  # Never reached, but satisfies pylint
+    if increment <= 0:
+        abort(
+            status.HTTP_400_BAD_REQUEST,
+            message="quantity must be a positive integer.",
+        )
+        return None  # Never reached, but satisfies pylint
+    return increment
+
+
+def _resolve_price_for_new_item(existing_item, price_raw):
+    """Resolve the price for the incoming payload."""
+    if existing_item and price_raw is None:
+        return Decimal(str(existing_item.price))
+    if price_raw is None:
+        abort(status.HTTP_400_BAD_REQUEST, message="price is required.")
+        return None  # Never reached, but satisfies pylint
+    try:
+        return Decimal(str(price_raw))
+    except (decimal.InvalidOperation, ValueError, TypeError):
+        abort(status.HTTP_400_BAD_REQUEST, message="price is invalid.")
+        return None  # Never reached, but satisfies pylint
+
+
+def _find_existing_item(shopcart, product_id):
+    """Find existing item by product_id in shopcart."""
+    return next(
+        (item for item in shopcart.items if item.product_id == product_id),
+        None,
+    )
+
+
 def _validate_shopcart_status_for_update(shopcart: Shopcart):
     """Validate that shopcart status allows updates."""
     status_norm = (
@@ -698,65 +761,27 @@ class ShopcartItemsCollectionResource(Resource):
     def post(self, customer_id):
         """Add an item to a shopcart."""
         check_content_type("application/json")
-        # Try finding by customer_id first, then by shopcart.id
-        shopcart = Shopcart.find_by_customer_id(customer_id).first()
-        if not shopcart:
-            shopcart = Shopcart.find(customer_id)
-        if not shopcart:
-            abort(
-                status.HTTP_404_NOT_FOUND,
-                message=f"Shopcart for customer '{customer_id}' was not found.",
-            )
+        shopcart = _find_shopcart_by_id_or_customer(customer_id)
 
         payload = request.get_json() or {}
-        product_id = int(payload["product_id"])
-        # Validate quantity increment
-        try:
-            increment = int(payload.get("quantity", 0))
-        except (TypeError, ValueError):
-            abort(status.HTTP_400_BAD_REQUEST, message="quantity must be an integer.")
-        if increment <= 0:
-            abort(
-                status.HTTP_400_BAD_REQUEST,
-                message="quantity must be a positive integer.",
-            )
+        product_id = _require_product_id_from_payload(payload)
+        increment = _require_quantity_increment_from_payload(payload)
+        existing_item = _find_existing_item(shopcart, product_id)
 
-        existing_item = next(
-            (item for item in shopcart.items if item.product_id == product_id),
-            None,
-        )
-
-        # Resolve the price for the incoming payload
-        price_raw = payload.get("price")
-        if existing_item and price_raw is None:
-            # Use existing item's price if no new price provided
-            price = Decimal(str(existing_item.price))
-        elif price_raw is None:
-            # No price provided and no existing item
-            abort(status.HTTP_400_BAD_REQUEST, message="price is required.")
-            price = Decimal("0")  # Unreachable, but satisfies type checker
-        else:
-            # Parse and validate the provided price
-            try:
-                price = Decimal(str(price_raw))
-            except (decimal.InvalidOperation, ValueError, TypeError):
-                abort(status.HTTP_400_BAD_REQUEST, message="price is invalid.")
-                price = Decimal("0")  # Unreachable, but satisfies type checker
+        price = _resolve_price_for_new_item(existing_item, payload.get("price"))
         quantity = increment + (existing_item.quantity if existing_item else 0)
         description = _resolve_description(existing_item, payload)
 
         shopcart.upsert_item(
             product_id=product_id,
             quantity=quantity,
-            price=price,  # pylint: disable=possibly-used-before-assignment
+            price=price,
             description=description,
         )
         shopcart.last_modified = datetime.utcnow()
         shopcart.update()
 
-        updated_item = next(
-            (item for item in shopcart.items if item.product_id == product_id), None
-        )
+        updated_item = _find_existing_item(shopcart, product_id)
         if not updated_item:
             abort(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,

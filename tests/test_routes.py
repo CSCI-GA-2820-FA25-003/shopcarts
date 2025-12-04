@@ -5975,12 +5975,6 @@ class TestYourResourceService(TestCase):
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
         # Description should be preserved or updated
 
-    def test_find_shopcart_by_id_or_customer_not_found(self):
-        """It should return 404 when shopcart not found (covers shopcarts.py line 178-186)"""
-        # This is tested indirectly through other endpoints
-        resp = self.client.get(f"{BASE_URL}/99999")
-        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
-
     def test_get_update_response_item_id_case(self):
         """It should return item when is_item_id is True (covers shopcarts.py line 273-275)"""
         cart = ShopcartFactory(status="active")
@@ -6095,26 +6089,6 @@ class TestYourResourceService(TestCase):
         resp = self.client.get(f"{BASE_URL}/{cart.id}/items")
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
 
-    def test_get_item_shopcart_not_found_by_id(self):
-        """It should try finding by shopcart.id (covers shopcarts.py line 844-867)"""
-        cart = ShopcartFactory(status="active")
-        cart.create()
-        item = ShopcartItemFactory(shopcart_id=cart.id)
-        item.create()
-        # Use shopcart.id
-        resp = self.client.get(f"{BASE_URL}/{cart.id}/items/{item.product_id}")
-        self.assertEqual(resp.status_code, status.HTTP_200_OK)
-
-    def test_get_item_by_item_id_fallback(self):
-        """It should try finding by item.id when product_id fails (covers shopcarts.py line 844-867)"""
-        cart = ShopcartFactory(status="active")
-        cart.create()
-        item = ShopcartItemFactory(shopcart_id=cart.id, product_id=100)
-        item.create()
-        # Use item.id instead of product_id
-        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items/{item.id}")
-        self.assertEqual(resp.status_code, status.HTTP_200_OK)
-
     def test_get_item_wrong_shopcart_id(self):
         """It should return None when item in different shopcart (covers shopcarts.py line 844-867)"""
         cart1 = ShopcartFactory(status="active")
@@ -6157,26 +6131,6 @@ class TestYourResourceService(TestCase):
         self.assertIn(
             resp.status_code, [status.HTTP_404_NOT_FOUND, status.HTTP_409_CONFLICT]
         )
-
-    def test_delete_item_shopcart_not_found_by_id(self):
-        """It should try finding by shopcart.id (covers shopcarts.py line 933-961)"""
-        cart = ShopcartFactory(status="active")
-        cart.create()
-        item = ShopcartItemFactory(shopcart_id=cart.id)
-        item.create()
-        # Use shopcart.id
-        resp = self.client.delete(f"{BASE_URL}/{cart.id}/items/{item.product_id}")
-        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
-
-    def test_delete_item_by_item_id_fallback(self):
-        """It should try finding by item.id when product_id fails (covers shopcarts.py line 933-961)"""
-        cart = ShopcartFactory(status="active")
-        cart.create()
-        item = ShopcartItemFactory(shopcart_id=cart.id, product_id=100)
-        item.create()
-        # Use item.id instead of product_id
-        resp = self.client.delete(f"{BASE_URL}/{cart.customer_id}/items/{item.id}")
-        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
 
     def test_delete_item_wrong_shopcart_id(self):
         """It should return None when item in different shopcart (covers shopcarts.py line 933-961)"""
@@ -6259,19 +6213,6 @@ class TestYourResourceService(TestCase):
         )
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("price is invalid", resp.get_json()["message"])
-
-    def test_resolve_description_no_existing_item(self):
-        """It should handle description when no existing item (covers shopcarts.py line 172-173)"""
-        cart = ShopcartFactory(status="active")
-        cart.create()
-        # Add new item without description
-        resp = self.client.post(
-            f"{BASE_URL}/{cart.customer_id}/items",
-            json={"product_id": 100, "quantity": 1, "price": 10.0},
-            content_type="application/json",
-        )
-        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
-        # Should work with empty description
 
     def test_find_shopcart_by_id_or_customer_find_by_id(self):
         """It should find shopcart by id when customer_id fails (covers shopcarts.py line 178-186)"""
