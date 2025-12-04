@@ -8304,3 +8304,24 @@ class TestYourResourceService(TestCase):
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
         data = resp.get_json()
         self.assertIn("message", data)
+
+    def test_shopcart_items_post_except_validation_error_direct(self):
+        """It should handle ValidationError in post except block (covers shopcarts.py line 836-837)"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+
+        # Mock _resolve_price_for_new_item to raise ValidationError
+        with patch(
+            "service.resources.shopcarts._resolve_price_for_new_item",
+            side_effect=ValidationError(
+                status_code=status.HTTP_400_BAD_REQUEST, message="price is required"
+            ),
+        ):
+            resp = self.client.post(
+                f"{BASE_URL}/{cart.customer_id}/items",
+                json={"product_id": 100, "quantity": 1},
+                content_type="application/json",
+            )
+            self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+            data = resp.get_json()
+            self.assertIn("message", data)
