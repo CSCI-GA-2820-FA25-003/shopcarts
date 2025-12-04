@@ -306,7 +306,7 @@ def _parse_item_filters(args) -> ItemFilters:
         filters.product_id = _parse_optional_int(
             {"product_id": product_id_raw},
             "product_id",
-            "product_id (or sku) must be an integer",
+            "product_id must be an integer",
         )
 
     filters.quantity = _parse_optional_int(
