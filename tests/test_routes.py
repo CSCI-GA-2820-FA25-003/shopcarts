@@ -5601,8 +5601,8 @@ class TestYourResourceService(TestCase):
             f"{BASE_URL}/{cart.customer_id}/items?description=Test&product_id=444&quantity=2&min_price=10&max_price=20"
         )
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        items = resp.get_json()
-        self.assertEqual(len(items), 1)
+        items_list = resp.get_json()
+        self.assertEqual(len(items_list), 1)
 
     # Tests for lines 748-790: POST items method
     def test_post_items_shopcart_not_found_by_customer_id_then_id(self):
@@ -5683,9 +5683,9 @@ class TestYourResourceService(TestCase):
             f"{BASE_URL}/{cart.customer_id}/items?description=one&product_id=555&quantity=2&min_price=5&max_price=15"
         )
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        items = resp.get_json()
-        self.assertEqual(len(items), 1)
-        self.assertEqual(items[0]["product_id"], 555)
+        items_list = resp.get_json()
+        self.assertEqual(len(items_list), 1)
+        self.assertEqual(items_list[0]["product_id"], 555)
 
     # Tests for lines 844-867: GET item method
     def test_get_item_shopcart_not_found_by_customer_id_then_id(self):
