@@ -191,7 +191,4 @@ def delete_all_carts_via_api(context):
 
 def _api_url(context, path: str) -> str:
     """Build a URL rooted at the running service base URL."""
-    clean_path = path.lstrip("/")
-    if not clean_path.startswith("api/"):
-        clean_path = f"api/{clean_path}"
-    return urljoin(context.base_url + "/", clean_path)
+    return urljoin(context.base_url + "/", path.lstrip("/"))

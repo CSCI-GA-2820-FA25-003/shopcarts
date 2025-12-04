@@ -82,25 +82,25 @@ Feature: Shopcart creation via admin UI
 
   Scenario: Query shopcarts by customer ID
     Given shopcarts exist for customer_id=5
-    When I send a GET request to "/api/shopcarts?customer_id=5"
+    When I send a GET request to "/shopcarts?customer_id=5"
     Then I should receive a 200 OK response
     And all returned shopcarts should have customer_id=5
 
   Scenario: Query shopcarts by status
     Given shopcarts exist with status="ACTIVE"
-    When I send a GET request to "/api/shopcarts?status=ACTIVE"
+    When I send a GET request to "/shopcarts?status=ACTIVE"
     Then I should receive a 200 OK response
     And all returned shopcarts should have status="ACTIVE"
 
   Scenario: Query shopcarts by price range
     Given shopcarts exist with various total prices
-    When I send a GET request to "/api/shopcarts?min_total=50.0&max_total=200.0"
+    When I send a GET request to "/shopcarts?min_total=50.0&max_total=200.0"
     Then I should receive a 200 OK response
     And all returned shopcarts should have total_price between 50.0 and 200.0
 
   Scenario: Query with invalid parameter
     Given the service is running
-    When I send a GET request to "/api/shopcarts?status=INVALID_STATUS"
+    When I send a GET request to "/shopcarts?status=INVALID_STATUS"
     Then I should receive a 400 Bad Request response
 
   # ============================================================================
@@ -108,27 +108,27 @@ Feature: Shopcart creation via admin UI
   # ============================================================================
   Scenario: Successfully lock a cart
     Given an active shopcart exists for customer 101
-    When I send a PATCH request to "/api/shopcarts/101/lock"
+    When I send a PATCH request to "/shopcarts/101/lock"
     Then I should receive a 200 OK response
     And the cart's status should update to "locked"
     And the last_modified timestamp should change
 
   Scenario: Successfully expire a cart
     Given a shopcart exists for customer 202
-    When I send a PATCH request to "/api/shopcarts/202/expire"
+    When I send a PATCH request to "/shopcarts/202/expire"
     Then I should receive a 200 OK response
     And the cart's status should update to "expired"
     And the last_modified timestamp should change
 
   Scenario: Attempt to lock a non-existent cart
     Given there is no shopcart with customer_id=999
-    When I send a PATCH request to "/api/shopcarts/999/lock"
+    When I send a PATCH request to "/shopcarts/999/lock"
     Then I should receive a 404 Not Found response
     And the response should state the shopcart was not found
 
   Scenario: Attempt to expire a non-existent cart
     Given there is no shopcart with customer_id=888
-    When I send a PATCH request to "/api/shopcarts/888/expire"
+    When I send a PATCH request to "/shopcarts/888/expire"
     Then I should receive a 404 Not Found response
     And the response should state the shopcart was not found
 
@@ -162,19 +162,19 @@ Feature: Shopcart creation via admin UI
   # ============================================================================
   Scenario: Retrieve totals for a populated cart
     Given a shopcart for customer 101 contains multiple items
-    When I send a GET request to "/api/shopcarts/101/totals"
+    When I send a GET request to "/shopcarts/101/totals"
     Then I should receive a 200 OK response
     And the response includes item_count, total_quantity, subtotal, discount, and total with correct values
 
   Scenario: Retrieve totals for an empty cart
     Given a shopcart for customer 202 exists but has no items
-    When I send a GET request to "/api/shopcarts/202/totals"
+    When I send a GET request to "/shopcarts/202/totals"
     Then I should receive a 200 OK response
     And the response shows zeros for item_count, total_quantity, subtotal, discount, and total
 
   Scenario: Attempt to retrieve totals for a missing cart
     Given no shopcart exists for customer 999
-    When I send a GET request to "/api/shopcarts/999/totals"
+    When I send a GET request to "/shopcarts/999/totals"
     Then I should receive a 404 Not Found response
     And the response should state the shopcart was not found
 
