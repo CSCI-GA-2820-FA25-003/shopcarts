@@ -7210,7 +7210,7 @@ class TestYourResourceService(TestCase):
 
     def test_resolve_description_no_existing_item_no_description_shopcarts(self):
         """It should return empty string when no existing item and no description (covers shopcarts.py line 156-157)"""
-        from service.resources.shopcarts import _resolve_description
+        from service.resources.shopcarts import _resolve_description  # pylint: disable=import-outside-toplevel
 
         # Test with None existing_item and empty payload
         result = _resolve_description(None, {})
@@ -7222,7 +7222,7 @@ class TestYourResourceService(TestCase):
 
     def test_find_shopcart_by_id_or_customer_raises_not_found_error(self):
         """It should raise NotFoundError when shopcart not found (covers shopcarts.py line 199-204)"""
-        from service.resources.shopcarts import (
+        from service.resources.shopcarts import (  # pylint: disable=import-outside-toplevel
             _find_shopcart_by_id_or_customer,
             NotFoundError,
         )
@@ -7236,7 +7236,7 @@ class TestYourResourceService(TestCase):
 
     def test_require_product_id_from_payload_raises_validation_error(self):
         """It should raise ValidationError for invalid product_id (covers shopcarts.py line 209-212)"""
-        from service.resources.shopcarts import (
+        from service.resources.shopcarts import (  # pylint: disable=import-outside-toplevel
             _require_product_id_from_payload,
             ValidationError,
         )
@@ -7258,7 +7258,7 @@ class TestYourResourceService(TestCase):
 
     def test_require_quantity_increment_from_payload_raises_validation_error(self):
         """It should raise ValidationError for invalid quantity (covers shopcarts.py line 220-231)"""
-        from service.resources.shopcarts import (
+        from service.resources.shopcarts import (  # pylint: disable=import-outside-toplevel
             _require_quantity_increment_from_payload,
             ValidationError,
         )
@@ -7284,7 +7284,7 @@ class TestYourResourceService(TestCase):
 
     def test_resolve_price_for_new_item_raises_validation_error(self):
         """It should raise ValidationError for invalid price (covers shopcarts.py line 236-243)"""
-        from service.resources.shopcarts import (
+        from service.resources.shopcarts import (  # pylint: disable=import-outside-toplevel
             _resolve_price_for_new_item,
             ValidationError,
         )
@@ -7322,7 +7322,7 @@ class TestYourResourceService(TestCase):
 
     def test_parse_price_bound_raises_validation_error(self):
         """It should raise ValidationError for invalid price bound (covers shopcarts.py line 484-490)"""
-        from service.resources.shopcarts import _parse_price_bound, ValidationError
+        from service.resources.shopcarts import _parse_price_bound, ValidationError  # pylint: disable=import-outside-toplevel
 
         # Test empty value
         with self.assertRaises(ValidationError) as context:
@@ -7336,7 +7336,7 @@ class TestYourResourceService(TestCase):
 
     def test_normalize_description_filter_raises_validation_error(self):
         """It should raise ValidationError for blank description (covers shopcarts.py line 495-503)"""
-        from service.resources.shopcarts import (
+        from service.resources.shopcarts import (  # pylint: disable=import-outside-toplevel
             _normalize_description_filter,
             ValidationError,
         )
@@ -7353,7 +7353,7 @@ class TestYourResourceService(TestCase):
 
     def test_parse_optional_int_raises_validation_error(self):
         """It should raise ValidationError for invalid optional int (covers shopcarts.py line 508-513)"""
-        from service.resources.shopcarts import _parse_optional_int, ValidationError
+        from service.resources.shopcarts import _parse_optional_int, ValidationError  # pylint: disable=import-outside-toplevel
 
         # Test invalid value
         with self.assertRaises(ValidationError) as context:
@@ -7364,7 +7364,7 @@ class TestYourResourceService(TestCase):
 
     def test_parse_item_filters_raises_validation_errors(self):
         """It should raise ValidationError for invalid filters (covers shopcarts.py line 518-554)"""
-        from service.resources.shopcarts import _parse_item_filters, ValidationError
+        from service.resources.shopcarts import _parse_item_filters, ValidationError  # pylint: disable=import-outside-toplevel
 
         # Test single unsupported filter
         with self.assertRaises(ValidationError) as context:
@@ -7457,7 +7457,7 @@ class TestYourResourceService(TestCase):
 
     def test_shopcart_list_abort_on_not_found_error(self):
         """It should abort on NotFoundError (covers shopcarts.py line 617)"""
-        from service.resources.shopcarts import NotFoundError
+        from service.resources.shopcarts import NotFoundError  # pylint: disable=import-outside-toplevel
 
         # Mock _parse_list_filters to raise NotFoundError
         with patch(  # pylint: disable=redefined-outer-name
@@ -7514,7 +7514,7 @@ class TestYourResourceService(TestCase):
 
     def test_find_existing_item_returns_item(self):
         """It should return item when found (covers shopcarts.py line 248)"""
-        from service.resources.shopcarts import _find_existing_item
+        from service.resources.shopcarts import _find_existing_item  # pylint: disable=import-outside-toplevel
 
         cart = ShopcartFactory(status="active")
         cart.create()
@@ -7528,7 +7528,7 @@ class TestYourResourceService(TestCase):
 
     def test_require_quantity_increment_from_payload_returns_increment(self):
         """It should return increment when valid (covers shopcarts.py line 231)"""
-        from service.resources.shopcarts import _require_quantity_increment_from_payload
+        from service.resources.shopcarts import _require_quantity_increment_from_payload  # pylint: disable=import-outside-toplevel
 
         # Test that it returns the increment when valid
         result = _require_quantity_increment_from_payload({"quantity": 5})
@@ -7536,7 +7536,7 @@ class TestYourResourceService(TestCase):
 
     def test_find_shopcart_by_id_or_customer_returns_shopcart(self):
         """It should return shopcart when found (covers shopcarts.py line 204)"""
-        from service.resources.shopcarts import _find_shopcart_by_id_or_customer
+        from service.resources.shopcarts import _find_shopcart_by_id_or_customer  # pylint: disable=import-outside-toplevel
 
         cart = ShopcartFactory(status="active")
         cart.create()
@@ -7548,7 +7548,7 @@ class TestYourResourceService(TestCase):
 
     def test_normalize_description_filter_returns_description(self):
         """It should return description when valid (covers shopcarts.py line 503)"""
-        from service.resources.shopcarts import _normalize_description_filter
+        from service.resources.shopcarts import _normalize_description_filter  # pylint: disable=import-outside-toplevel
 
         # Test that it returns the description when valid
         result = _normalize_description_filter("valid description")
@@ -7556,7 +7556,7 @@ class TestYourResourceService(TestCase):
 
     def test_parse_item_filters_returns_filters(self):
         """It should return filters when valid (covers shopcarts.py line 554)"""
-        from service.resources.shopcarts import _parse_item_filters
+        from service.resources.shopcarts import _parse_item_filters  # pylint: disable=import-outside-toplevel
 
         # Test that it returns filters when valid
         result = _parse_item_filters({"product_id": "100", "quantity": "2"})
@@ -7710,7 +7710,7 @@ class TestYourResourceService(TestCase):
 
     def test_resolve_price_for_new_item_with_existing_item_none_price(self):
         """It should return existing item price when price_raw is None (covers shopcarts.py line 237)"""
-        from service.resources.shopcarts import _resolve_price_for_new_item
+        from service.resources.shopcarts import _resolve_price_for_new_item  # pylint: disable=import-outside-toplevel
 
         cart = ShopcartFactory(status="active")
         cart.create()
@@ -7725,7 +7725,7 @@ class TestYourResourceService(TestCase):
 
     def test_get_update_response_item_found_and_matches_shopcart(self):
         """It should return item when found by id and matches shopcart (covers shopcarts.py line 302-304)"""
-        from service.resources.shopcarts import _get_update_response
+        from service.resources.shopcarts import _get_update_response  # pylint: disable=import-outside-toplevel
 
         cart = ShopcartFactory(status="active")
         cart.create()
@@ -7776,8 +7776,7 @@ class TestYourResourceService(TestCase):
 
     def test_apply_item_filters_all_conditions_directly(self):
         """It should test _apply_item_filters function directly (covers shopcarts.py line 559-569)"""
-        from service.resources.shopcarts import _apply_item_filters, ItemFilters
-        from service.models import ShopcartItem
+        from service.resources.shopcarts import _apply_item_filters, ItemFilters  # pylint: disable=import-outside-toplevel
 
         cart = ShopcartFactory(status="active")
         cart.create()

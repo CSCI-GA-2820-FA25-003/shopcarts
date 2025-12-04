@@ -1,6 +1,6 @@
 """Flask-RESTX resources for shopcart operations."""
 
-# pylint: disable=too-few-public-methods,missing-function-docstring,inconsistent-return-statements
+# pylint: disable=too-few-public-methods,missing-function-docstring,inconsistent-return-statements,too-many-lines
 
 import decimal
 from dataclasses import dataclass
@@ -208,21 +208,21 @@ def _require_product_id_from_payload(payload):
     """Extract and validate product_id from payload."""
     try:
         return int(payload["product_id"])
-    except (KeyError, TypeError, ValueError):
+    except (KeyError, TypeError, ValueError) as exc:
         raise ValidationError(
             status.HTTP_400_BAD_REQUEST,
             "product_id is required and must be an integer.",
-        )
+        ) from exc
 
 
 def _require_quantity_increment_from_payload(payload):
     """Validate quantity increment from payload."""
     try:
         increment = int(payload.get("quantity", 0))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError) as exc:
         raise ValidationError(
             status.HTTP_400_BAD_REQUEST, "quantity must be an integer."
-        )
+        ) from exc
     if increment <= 0:
         raise ValidationError(
             status.HTTP_400_BAD_REQUEST,
@@ -239,8 +239,8 @@ def _resolve_price_for_new_item(existing_item, price_raw):
         raise ValidationError(status.HTTP_400_BAD_REQUEST, "price is required.")
     try:
         return Decimal(str(price_raw))
-    except (decimal.InvalidOperation, ValueError, TypeError):
-        raise ValidationError(status.HTTP_400_BAD_REQUEST, "price is invalid.")
+    except (decimal.InvalidOperation, ValueError, TypeError) as exc:
+        raise ValidationError(status.HTTP_400_BAD_REQUEST, "price is invalid.") from exc
 
 
 def _find_existing_item(shopcart, product_id):
@@ -315,11 +315,11 @@ def _parse_decimal(value: str, field: str) -> Decimal:
         )
     try:
         return Decimal(cleaned)
-    except (decimal.InvalidOperation, ValueError):
+    except (decimal.InvalidOperation, ValueError) as exc:
         raise ValidationError(
             status.HTTP_400_BAD_REQUEST,
             f"{field} must be a valid decimal number: {value}",
-        )
+        ) from exc
 
 
 def _compute_cart_total(cart: Shopcart) -> Decimal:
@@ -392,11 +392,11 @@ def _parse_customer_id_filter(value) -> int | None:
         return None
     try:
         return int(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError) as exc:
         raise ValidationError(
             status.HTTP_400_BAD_REQUEST,
             "customer_id must be an integer when provided.",
-        )
+        ) from exc
 
 
 def _parse_optional_datetime(value, field: str) -> datetime | None:
@@ -486,8 +486,10 @@ def _parse_price_bound(value: str, field: str) -> Decimal:
         raise ValidationError(status.HTTP_400_BAD_REQUEST, f"{field} must be a number")
     try:
         return Decimal(cleaned)
-    except (decimal.InvalidOperation, ValueError, TypeError):
-        raise ValidationError(status.HTTP_400_BAD_REQUEST, f"{field} must be a number")
+    except (decimal.InvalidOperation, ValueError, TypeError) as exc:
+        raise ValidationError(
+            status.HTTP_400_BAD_REQUEST, f"{field} must be a number"
+        ) from exc
 
 
 def _normalize_description_filter(value) -> str | None:
@@ -509,8 +511,8 @@ def _parse_optional_int(args, field: str, error_message: str) -> int | None:
         return None
     try:
         return int(args.get(field))
-    except (TypeError, ValueError):
-        raise ValidationError(status.HTTP_400_BAD_REQUEST, error_message)
+    except (TypeError, ValueError) as exc:
+        raise ValidationError(status.HTTP_400_BAD_REQUEST, error_message) from exc
 
 
 def _parse_item_filters(args) -> ItemFilters:
@@ -580,11 +582,11 @@ def _parse_iso8601_to_utc(value: str, field: str) -> datetime:
     normalized = cleaned.replace("Z", "+00:00").replace(" ", "+")
     try:
         parsed = datetime.fromisoformat(normalized)
-    except ValueError:
+    except ValueError as exc:
         raise ValidationError(
             status.HTTP_400_BAD_REQUEST,
             f"{field} must be a valid ISO8601 timestamp: {cleaned}",
-        )
+        ) from exc
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     utc_value = parsed.astimezone(timezone.utc)
