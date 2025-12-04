@@ -4376,7 +4376,7 @@ class TestYourResourceService(TestCase):
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
-        customer_id = resp.get_json()["customer_id"]
+        resp.get_json()  # Verify response
 
         # Try to filter with empty min_total
         resp = self.client.get(f"{BASE_URL}?min_total=")
@@ -4393,7 +4393,7 @@ class TestYourResourceService(TestCase):
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
-        customer_id = resp.get_json()["customer_id"]
+        resp.get_json()  # Verify response
 
         # Try to filter with invalid min_total
         resp = self.client.get(f"{BASE_URL}?min_total=invalid")
@@ -4408,7 +4408,7 @@ class TestYourResourceService(TestCase):
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
-        customer_id = resp.get_json()["customer_id"]
+        resp.get_json()  # Verify response
 
         # Try to filter with invalid max_total
         resp = self.client.get(f"{BASE_URL}?max_total=not_a_decimal")
@@ -5240,7 +5240,7 @@ class TestYourResourceService(TestCase):
         # This tests _get_update_response when is_item_id=True but item.shopcart_id != shopcart.id
         # We need to use a route that would trigger this, but since item belongs to cart1,
         # we'll test by updating from cart1 but checking the response logic
-        resp = self.client.put(
+        self.client.put(
             f"{BASE_URL}/{cart1.customer_id}/items/{item.id}",
             json={"quantity": 5},
             content_type="application/json",
@@ -5265,7 +5265,7 @@ class TestYourResourceService(TestCase):
         # This simulates the case where item is not found after upsert
         with patch.object(cart, 'items', []):
             # Try to add item - this should trigger the 500 error path
-            resp = self.client.post(
+            self.client.post(
                 f"{BASE_URL}/{cart.customer_id}/items",
                 json={"product_id": 100, "quantity": 1, "price": 10.0},
                 content_type="application/json",
@@ -5707,4 +5707,3 @@ class TestYourResourceService(TestCase):
         """It should return 404 when shopcart not found (covers line 933-961)"""
         resp = self.client.delete(f"{BASE_URL}/99999/items/100")
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
-

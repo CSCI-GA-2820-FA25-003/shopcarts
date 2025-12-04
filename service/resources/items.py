@@ -485,7 +485,6 @@ class ItemResource(Resource):
                 _parse_price_from_payload,
                 _validate_shopcart_status_for_update,
                 _update_shopcart_item,
-                _check_if_product_id_is_item_id,
                 _handle_zero_quantity_update,
                 check_content_type,
             )
