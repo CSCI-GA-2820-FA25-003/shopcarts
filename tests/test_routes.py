@@ -32,6 +32,7 @@ from service.models import db, Shopcart, ShopcartItem, DataValidationError
 from service.common import error_handlers
 from service import routes
 from service.resources.shopcarts import _find_item_by_product_or_id
+from service.resources import items
 from .factories import ShopcartFactory, ShopcartItemFactory
 
 DATABASE_URI = os.getenv(
@@ -5860,8 +5861,6 @@ class TestYourResourceService(TestCase):
 
     def test_handle_customer_id_route_update_import_error(self):
         """It should handle ImportError case (covers items.py line 466)"""
-        from service.resources import items
-
         # Mock the import to fail
         original = items._find_item_by_product_or_id
         items._find_item_by_product_or_id = None

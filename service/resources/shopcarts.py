@@ -196,7 +196,6 @@ def _require_product_id_from_payload(payload):
             status.HTTP_400_BAD_REQUEST,
             message="product_id is required and must be an integer.",
         )
-        return None  # Never reached, but satisfies pylint
 
 
 def _require_quantity_increment_from_payload(payload):
@@ -205,13 +204,11 @@ def _require_quantity_increment_from_payload(payload):
         increment = int(payload.get("quantity", 0))
     except (TypeError, ValueError):
         abort(status.HTTP_400_BAD_REQUEST, message="quantity must be an integer.")
-        return None  # Never reached, but satisfies pylint
     if increment <= 0:
         abort(
             status.HTTP_400_BAD_REQUEST,
             message="quantity must be a positive integer.",
         )
-        return None  # Never reached, but satisfies pylint
     return increment
 
 
@@ -221,12 +218,10 @@ def _resolve_price_for_new_item(existing_item, price_raw):
         return Decimal(str(existing_item.price))
     if price_raw is None:
         abort(status.HTTP_400_BAD_REQUEST, message="price is required.")
-        return None  # Never reached, but satisfies pylint
     try:
         return Decimal(str(price_raw))
     except (decimal.InvalidOperation, ValueError, TypeError):
         abort(status.HTTP_400_BAD_REQUEST, message="price is invalid.")
-        return None  # Never reached, but satisfies pylint
 
 
 def _find_existing_item(shopcart, product_id):
