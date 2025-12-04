@@ -216,6 +216,352 @@ class TestYourResourceService(TestCase):
                 resource.delete(missing_customer_id, missing_product_id)
         self.assertEqual(ctx.exception.code, status.HTTP_404_NOT_FOUND)
 
+    def test_shopcart_items_collection_post_not_found_coverage(self):
+        """It should abort with 404 when posting to a missing shopcart (direct Resource call)."""
+        resource = ShopcartItemsCollectionResource()
+        missing_customer_id = 999999
+        payload = {"product_id": 100, "quantity": 1, "price": 10.0}
+
+        with app.test_request_context(
+            f"{BASE_URL}/{missing_customer_id}/items",
+            method="POST",
+            json=payload,
+            content_type="application/json",
+        ):
+            with self.assertRaises(HTTPException) as ctx:
+                resource.post(missing_customer_id)
+
+        self.assertEqual(ctx.exception.code, status.HTTP_404_NOT_FOUND)
+
+    def test_shopcart_items_collection_post_validation_error_coverage(self):
+        """It should abort with 400 when payload is invalid (direct Resource call)."""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+
+        resource = ShopcartItemsCollectionResource()
+        # Missing product_id will cause ValidationError in _require_product_id_from_payload
+        payload = {"quantity": 1, "price": 10.0}
+
+        with app.test_request_context(
+            f"{BASE_URL}/{cart.customer_id}/items",
+            method="POST",
+            json=payload,
+            content_type="application/json",
+        ):
+            with self.assertRaises(HTTPException) as ctx:
+                resource.post(cart.customer_id)
+
+        self.assertEqual(ctx.exception.code, status.HTTP_400_BAD_REQUEST)
+
+    def test_shopcart_items_collection_get_not_found_coverage(self):
+        """It should abort with 404 when listing items for a missing shopcart."""
+        resource = ShopcartItemsCollectionResource()
+        missing_customer_id = 13579
+
+        with app.test_request_context(
+            f"{BASE_URL}/{missing_customer_id}/items",
+            method="GET",
+            content_type="application/json",
+        ):
+            with self.assertRaises(HTTPException) as ctx:
+                resource.get(missing_customer_id)
+
+        self.assertEqual(ctx.exception.code, status.HTTP_404_NOT_FOUND)
+
+    def test_shopcart_items_collection_get_validation_error_coverage(self):
+        """It should abort with 400 when unsupported filters are provided."""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+
+        resource = ShopcartItemsCollectionResource()
+
+        with app.test_request_context(
+            f"{BASE_URL}/{cart.customer_id}/items?unsupported=value",
+            method="GET",
+            content_type="application/json",
+        ):
+            with self.assertRaises(HTTPException) as ctx:
+                resource.get(cart.customer_id)
+
+        self.assertEqual(ctx.exception.code, status.HTTP_400_BAD_REQUEST)
+
+    def test_shopcart_items_collection_get_success_direct_coverage(self):
+        """It should list items via ShopcartItemsCollectionResource.get."""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+
+        item1 = ShopcartItemFactory(
+            shopcart_id=cart.id,
+            product_id=100,
+            quantity=2,
+            price=Decimal("10.00"),
+        )
+        item1.create()
+        item2 = ShopcartItemFactory(
+            shopcart_id=cart.id,
+            product_id=200,
+            quantity=1,
+            price=Decimal("5.00"),
+        )
+        item2.create()
+
+        resource = ShopcartItemsCollectionResource()
+
+        with app.test_request_context(
+            f"{BASE_URL}/{cart.customer_id}/items",
+            method="GET",
+            content_type="application/json",
+        ):
+            result = resource.get(cart.customer_id)
+
+        if isinstance(result, tuple) and len(result) >= 2:
+            body, status_code = result[0], result[1]
+        elif isinstance(result, tuple):
+            body = result[0]
+            status_code = status.HTTP_200_OK
+        else:
+            body = result
+            status_code = status.HTTP_200_OK
+
+        self.assertEqual(status_code, status.HTTP_200_OK)
+        self.assertIsInstance(body, list)
+        self.assertEqual(len(body), 2)
+
+    def test_shopcart_item_resource_get_success_coverage(self):
+        """It should return an item via ShopcartItemResource.get when it exists."""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        item = ShopcartItemFactory(
+            shopcart_id=cart.id,
+            product_id=100,
+            quantity=1,
+            price=Decimal("10.00"),
+        )
+        item.create()
+
+        resource = ShopcartItemResource()
+
+        with app.test_request_context(
+            f"{BASE_URL}/{cart.customer_id}/items/{item.product_id}",
+            method="GET",
+            content_type="application/json",
+        ):
+            result = resource.get(cart.customer_id, item.product_id)
+
+        # Flask-RESTX resources may return (body, status) or just body
+        if isinstance(result, tuple) and len(result) >= 2:
+            body, status_code = result[0], result[1]
+        elif isinstance(result, tuple):
+            body = result[0]
+            status_code = status.HTTP_200_OK
+        else:
+            body = result
+            status_code = status.HTTP_200_OK
+
+        self.assertEqual(status_code, status.HTTP_200_OK)
+        self.assertIsInstance(body, dict)
+        self.assertEqual(body.get("product_id"), item.product_id)
+
+    def test_shopcart_item_resource_get_item_not_found_coverage(self):
+        """It should abort with 404 when the requested item is not in the shopcart."""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+
+        resource = ShopcartItemResource()
+        missing_product_id = 99999
+
+        with app.test_request_context(
+            f"{BASE_URL}/{cart.customer_id}/items/{missing_product_id}",
+            method="GET",
+            content_type="application/json",
+        ):
+            with self.assertRaises(HTTPException) as ctx:
+                resource.get(cart.customer_id, missing_product_id)
+
+        self.assertEqual(ctx.exception.code, status.HTTP_404_NOT_FOUND)
+
+    def test_shopcart_item_resource_get_shopcart_id_fallback_coverage(self):
+        """It should fall back to Shopcart.find when customer_id is actually a shopcart id."""
+        cart = ShopcartFactory(status="active", customer_id=5000)
+        cart.create()
+        item = ShopcartItemFactory(
+            shopcart_id=cart.id,
+            product_id=777,
+            quantity=1,
+            price=Decimal("9.99"),
+        )
+        item.create()
+
+        resource = ShopcartItemResource()
+        route_id = cart.id  # Use shopcart.id instead of customer_id
+
+        with app.test_request_context(
+            f"{BASE_URL}/{route_id}/items/{item.product_id}",
+            method="GET",
+            content_type="application/json",
+        ):
+            result = resource.get(route_id, item.product_id)
+
+        if isinstance(result, tuple) and len(result) >= 2:
+            body, status_code = result[0], result[1]
+        elif isinstance(result, tuple):
+            body = result[0]
+            status_code = status.HTTP_200_OK
+        else:
+            body = result
+            status_code = status.HTTP_200_OK
+
+        self.assertEqual(status_code, status.HTTP_200_OK)
+        self.assertEqual(body.get("product_id"), item.product_id)
+
+    def test_shopcart_item_resource_get_missing_shopcart_coverage(self):
+        """It should abort with 404 when the shopcart does not exist in get()."""
+        resource = ShopcartItemResource()
+        missing_customer_id = 987654
+
+        with app.test_request_context(
+            f"{BASE_URL}/{missing_customer_id}/items/1",
+            method="GET",
+            content_type="application/json",
+        ):
+            with self.assertRaises(HTTPException) as ctx:
+                resource.get(missing_customer_id, 1)
+
+        self.assertEqual(ctx.exception.code, status.HTTP_404_NOT_FOUND)
+
+    def test_shopcart_item_resource_get_validation_error_abort_coverage(self):
+        """It should abort with 400 when a ValidationError is raised inside get()."""
+        resource = ShopcartItemResource()
+
+        with patch.object(
+            Shopcart,
+            "find_by_customer_id",
+            side_effect=ValidationError(
+                status.HTTP_400_BAD_REQUEST, "forced validation error"
+            ),
+        ):
+            with app.test_request_context(
+                f"{BASE_URL}/123/items/1",
+                method="GET",
+                content_type="application/json",
+            ):
+                with self.assertRaises(HTTPException) as ctx:
+                    resource.get(123, 1)
+
+        self.assertEqual(ctx.exception.code, status.HTTP_400_BAD_REQUEST)
+
+    def test_shopcart_item_resource_put_route_mismatch_coverage(self):
+        """It should abort with 404 when PUT is called on a shopcart_id route."""
+        cart = ShopcartFactory(status="active", customer_id=1000)
+        cart.create()
+        item = ShopcartItemFactory(shopcart_id=cart.id, product_id=200)
+        item.create()
+
+        resource = ShopcartItemResource()
+        # Use cart.id in place of customer_id so that find_by_customer_id fails
+        # but Shopcart.find succeeds with a mismatched customer_id.
+        route_id = cart.id
+
+        with app.test_request_context(
+            f"{BASE_URL}/{route_id}/items/{item.product_id}",
+            method="PUT",
+            json={"quantity": 5, "price": 10.0},
+            content_type="application/json",
+        ):
+            with self.assertRaises(HTTPException) as ctx:
+                resource.put(route_id, item.product_id)
+
+        self.assertEqual(ctx.exception.code, status.HTTP_404_NOT_FOUND)
+
+    def test_shopcart_item_resource_delete_item_not_found_coverage(self):
+        """It should abort with 404 when deleting a non-existent item."""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+
+        resource = ShopcartItemResource()
+        missing_product_id = 123456
+
+        with app.test_request_context(
+            f"{BASE_URL}/{cart.customer_id}/items/{missing_product_id}",
+            method="DELETE",
+            content_type="application/json",
+        ):
+            with self.assertRaises(HTTPException) as ctx:
+                resource.delete(cart.customer_id, missing_product_id)
+
+        self.assertEqual(ctx.exception.code, status.HTTP_404_NOT_FOUND)
+
+    def test_shopcart_item_resource_delete_item_id_wrong_shopcart_coverage(self):
+        """It should abort with 404 when item is found by id but belongs to a different shopcart."""
+        cart1 = ShopcartFactory(status="active")
+        cart1.create()
+        cart2 = ShopcartFactory(status="active")
+        cart2.create()
+
+        item = ShopcartItemFactory(shopcart_id=cart1.id, product_id=400)
+        item.create()
+
+        resource = ShopcartItemResource()
+
+        with app.test_request_context(
+            f"{BASE_URL}/{cart2.customer_id}/items/{item.id}",
+            method="DELETE",
+            content_type="application/json",
+        ):
+            with self.assertRaises(HTTPException) as ctx:
+                resource.delete(cart2.customer_id, item.id)
+
+        self.assertEqual(ctx.exception.code, status.HTTP_404_NOT_FOUND)
+
+    def test_shopcart_item_resource_delete_success_coverage(self):
+        """It should delete an existing item via ShopcartItemResource.delete."""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        item = ShopcartItemFactory(shopcart_id=cart.id, product_id=300)
+        item.create()
+
+        resource = ShopcartItemResource()
+
+        with app.test_request_context(
+            f"{BASE_URL}/{cart.customer_id}/items/{item.product_id}",
+            method="DELETE",
+            content_type="application/json",
+        ):
+            result = resource.delete(cart.customer_id, item.product_id)
+
+        if isinstance(result, tuple) and len(result) >= 2:
+            body, status_code = result[0], result[1]
+        elif isinstance(result, tuple):
+            body = result[0]
+            status_code = status.HTTP_204_NO_CONTENT
+        else:
+            body = result
+            status_code = status.HTTP_204_NO_CONTENT
+
+        self.assertEqual(status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(body, "")
+
+    def test_shopcart_item_resource_delete_validation_error_abort_coverage(self):
+        """It should abort with 400 when a ValidationError is raised inside delete()."""
+        resource = ShopcartItemResource()
+
+        with patch.object(
+            Shopcart,
+            "find_by_customer_id",
+            side_effect=ValidationError(
+                status.HTTP_400_BAD_REQUEST, "forced validation error"
+            ),
+        ):
+            with app.test_request_context(
+                f"{BASE_URL}/123/items/1",
+                method="DELETE",
+                content_type="application/json",
+            ):
+                with self.assertRaises(HTTPException) as ctx:
+                    resource.delete(123, 1)
+
+        self.assertEqual(ctx.exception.code, status.HTTP_400_BAD_REQUEST)
+
     ######################################################################
     #  P L A C E   T E S T   C A S E S   H E R E
     ######################################################################
