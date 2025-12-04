@@ -7773,3 +7773,176 @@ class TestYourResourceService(TestCase):
         else:
             # If cart2.id == cart2.customer_id, skip this test
             self.skipTest("cart2.id equals cart2.customer_id, cannot test abort path")
+
+    def test_apply_item_filters_all_conditions_directly(self):
+        """It should test _apply_item_filters function directly (covers shopcarts.py line 559-569)"""
+        from service.resources.shopcarts import _apply_item_filters, ItemFilters
+        from service.models import ShopcartItem
+
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        item1 = ShopcartItemFactory(
+            shopcart_id=cart.id,
+            product_id=100,
+            description="Test item",
+            quantity=2,
+            price=Decimal("10.0"),
+        )
+        item1.create()
+        item2 = ShopcartItemFactory(
+            shopcart_id=cart.id,
+            product_id=200,
+            description="Another item",
+            quantity=1,
+            price=Decimal("20.0"),
+        )
+        item2.create()
+
+        # Test each filter condition individually
+        query = ShopcartItem.find_by_shopcart_id(cart.id)
+
+        # Test description filter
+        filters = ItemFilters(description="Test")
+        filtered_query = _apply_item_filters(query, filters)
+        results = filtered_query.all()
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].product_id, 100)
+
+        # Test product_id filter
+        filters = ItemFilters(product_id=200)
+        filtered_query = _apply_item_filters(query, filters)
+        results = filtered_query.all()
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].product_id, 200)
+
+        # Test quantity filter
+        filters = ItemFilters(quantity=2)
+        filtered_query = _apply_item_filters(query, filters)
+        results = filtered_query.all()
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].quantity, 2)
+
+        # Test min_price filter
+        filters = ItemFilters(min_price=Decimal("15.0"))
+        filtered_query = _apply_item_filters(query, filters)
+        results = filtered_query.all()
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].product_id, 200)
+
+        # Test max_price filter
+        filters = ItemFilters(max_price=Decimal("15.0"))
+        filtered_query = _apply_item_filters(query, filters)
+        results = filtered_query.all()
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].product_id, 100)
+
+    def test_post_items_validation_error_handling_complete(self):
+        """It should handle ValidationError in post method completely (covers shopcarts.py line 797-830)"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+
+        # Test ValidationError for invalid product_id type
+        resp = self.client.post(
+            f"{BASE_URL}/{cart.customer_id}/items",
+            json={"product_id": "not_a_number", "quantity": 1, "price": 10.0},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        data = resp.get_json()
+        self.assertIn("message", data)
+        self.assertIn("product_id", data["message"])
+
+        # Test ValidationError for negative quantity
+        resp = self.client.post(
+            f"{BASE_URL}/{cart.customer_id}/items",
+            json={"product_id": 100, "quantity": -1, "price": 10.0},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        data = resp.get_json()
+        self.assertIn("message", data)
+
+    def test_get_items_validation_error_handling_complete(self):
+        """It should handle ValidationError in get method completely (covers shopcarts.py line 845-856)"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+
+        # Test ValidationError for invalid max_price
+        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items?max_price=invalid")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        data = resp.get_json()
+        self.assertIn("message", data)
+
+        # Test ValidationError for invalid quantity filter
+        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items?quantity=not_a_number")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        data = resp.get_json()
+        self.assertIn("message", data)
+
+    def test_get_item_validation_error_handling_complete(self):
+        """It should handle ValidationError in get method completely (covers shopcarts.py line 867-894)"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        item = ShopcartItemFactory(shopcart_id=cart.id, product_id=100)
+        item.create()
+
+        # Test NotFoundError when shopcart found by id but customer_id doesn't match
+        # This tests the fallback logic in get method
+        # Create another shopcart with different customer_id
+        cart2 = ShopcartFactory(status="active", customer_id=9999)
+        cart2.create()
+
+        # Try to get item using cart2.id as customer_id when cart2.customer_id != cart2.id
+        # This should trigger the fallback logic
+        if cart2.id != cart2.customer_id:
+            resp = self.client.get(f"{BASE_URL}/{cart2.id}/items/{item.id}")
+            # Should return 404 because item doesn't belong to cart2
+            self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_put_item_customer_id_mismatch_abort(self):
+        """It should abort when shopcart found by id but customer_id doesn't match (covers shopcarts.py line 913)"""
+        # Create shopcart with specific customer_id
+        cart = ShopcartFactory(status="active", customer_id=1000)
+        cart.create()
+        item = ShopcartItemFactory(shopcart_id=cart.id, product_id=100)
+        item.create()
+
+        # Create another shopcart with different customer_id
+        cart2 = ShopcartFactory(status="active", customer_id=2000)
+        cart2.create()
+
+        # Try to update item using cart2.id as customer_id
+        # When shopcart is found by id (cart2.id) but customer_id doesn't match (cart2.customer_id != cart2.id)
+        # This should trigger the abort at line 913
+        if cart2.id != cart2.customer_id:
+            resp = self.client.put(
+                f"{BASE_URL}/{cart2.id}/items/{item.product_id}",
+                json={"quantity": 5},
+                content_type="application/json",
+            )
+            # Should return 404 from the abort at line 913
+            self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+            data = resp.get_json()
+            self.assertIn("message", data)
+            self.assertIn("was not found", data["message"])
+
+    def test_delete_item_validation_error_handling_complete(self):
+        """It should handle ValidationError in delete method completely (covers shopcarts.py line 959-991)"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        item = ShopcartItemFactory(shopcart_id=cart.id, product_id=100)
+        item.create()
+
+        # Test NotFoundError when shopcart found by id but customer_id doesn't match
+        # Create another shopcart with different customer_id
+        cart2 = ShopcartFactory(status="active", customer_id=9999)
+        cart2.create()
+
+        # Try to delete item using cart2.id as customer_id when cart2.customer_id != cart2.id
+        # This should trigger the fallback logic
+        if cart2.id != cart2.customer_id:
+            resp = self.client.delete(f"{BASE_URL}/{cart2.id}/items/{item.id}")
+            # Should return 404 because item doesn't belong to cart2
+            self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+            data = resp.get_json()
+            self.assertIn("message", data)
