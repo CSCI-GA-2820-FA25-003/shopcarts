@@ -6817,3 +6817,347 @@ class TestYourResourceService(TestCase):
         # This should find item by id but then check shopcart_id and return 404
         resp = self.client.delete(f"{BASE_URL}/{cart2.customer_id}/items/{item.id}")
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
+    # Additional tests to improve coverage for shopcarts.py
+    def test_resolve_description_no_existing_item_no_description_in_payload(self):
+        """It should return empty string when no existing item and no description (covers shopcarts.py line 136-137)"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        # Add item without description in payload
+        resp = self.client.post(
+            f"{BASE_URL}/{cart.customer_id}/items",
+            json={"product_id": 100, "quantity": 1, "price": 10.0},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+
+    def test_find_shopcart_by_id_or_customer_not_found_by_customer_id_or_id(self):
+        """It should return 404 when shopcart not found by customer_id or id (covers shopcarts.py line 179-187)"""
+        resp = self.client.post(
+            f"{BASE_URL}/99999/items",
+            json={"product_id": 100, "quantity": 1, "price": 10.0},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn("was not found", resp.get_json()["message"])
+
+    def test_require_product_id_from_payload_keyerror(self):
+        """It should handle KeyError in product_id (covers shopcarts.py line 192-195)"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        resp = self.client.post(
+            f"{BASE_URL}/{cart.customer_id}/items",
+            json={"quantity": 1, "price": 10.0},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("product_id is required", resp.get_json()["message"])
+
+    def test_require_product_id_from_payload_typeerror(self):
+        """It should handle TypeError in product_id (covers shopcarts.py line 192-195)"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        resp = self.client.post(
+            f"{BASE_URL}/{cart.customer_id}/items",
+            json={"product_id": None, "quantity": 1, "price": 10.0},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("product_id is required", resp.get_json()["message"])
+
+    def test_require_product_id_from_payload_valueerror(self):
+        """It should handle ValueError in product_id (covers shopcarts.py line 192-195)"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        resp = self.client.post(
+            f"{BASE_URL}/{cart.customer_id}/items",
+            json={"product_id": "invalid", "quantity": 1, "price": 10.0},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("product_id is required", resp.get_json()["message"])
+
+    def test_require_quantity_increment_from_payload_typeerror(self):
+        """It should handle TypeError in quantity (covers shopcarts.py line 203-212)"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        resp = self.client.post(
+            f"{BASE_URL}/{cart.customer_id}/items",
+            json={"product_id": 100, "quantity": None, "price": 10.0},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("quantity must be an integer", resp.get_json()["message"])
+
+    def test_require_quantity_increment_from_payload_valueerror(self):
+        """It should handle ValueError in quantity (covers shopcarts.py line 203-212)"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        resp = self.client.post(
+            f"{BASE_URL}/{cart.customer_id}/items",
+            json={"product_id": 100, "quantity": "invalid", "price": 10.0},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("quantity must be an integer", resp.get_json()["message"])
+
+    def test_require_quantity_increment_from_payload_zero(self):
+        """It should reject zero quantity (covers shopcarts.py line 203-212)"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        resp = self.client.post(
+            f"{BASE_URL}/{cart.customer_id}/items",
+            json={"product_id": 100, "quantity": 0, "price": 10.0},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("quantity must be a positive integer", resp.get_json()["message"])
+
+    def test_resolve_price_for_new_item_with_existing_item(self):
+        """It should use existing item price when price is None (covers shopcarts.py line 217-224)"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        item = ShopcartItemFactory(
+            shopcart_id=cart.id, product_id=100, price=Decimal("15.00")
+        )
+        item.create()
+        # Add more quantity without providing price
+        resp = self.client.post(
+            f"{BASE_URL}/{cart.customer_id}/items",
+            json={"product_id": 100, "quantity": 2},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+
+    def test_resolve_price_for_new_item_invalid_operation(self):
+        """It should handle InvalidOperation in price (covers shopcarts.py line 217-224)"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        resp = self.client.post(
+            f"{BASE_URL}/{cart.customer_id}/items",
+            json={"product_id": 100, "quantity": 1, "price": "invalid_decimal"},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("price is invalid", resp.get_json()["message"])
+
+    def test_resolve_price_for_new_item_typeerror(self):
+        """It should handle TypeError in price (covers shopcarts.py line 217-224)"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        resp = self.client.post(
+            f"{BASE_URL}/{cart.customer_id}/items",
+            json={"product_id": 100, "quantity": 1, "price": []},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("price is invalid", resp.get_json()["message"])
+
+    def test_find_existing_item_found(self):
+        """It should find existing item by product_id (covers shopcarts.py line 229)"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        item = ShopcartItemFactory(shopcart_id=cart.id, product_id=100)
+        item.create()
+        # Add more quantity to existing item
+        resp = self.client.post(
+            f"{BASE_URL}/{cart.customer_id}/items",
+            json={"product_id": 100, "quantity": 2},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+
+    def test_get_update_response_find_by_item_id_success(self):
+        """It should find updated item by item.id (covers shopcarts.py line 283-285)"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        item = ShopcartItemFactory(shopcart_id=cart.id, product_id=100)
+        item.create()
+        # Update using item.id
+        resp = self.client.put(
+            f"{BASE_URL}/{cart.customer_id}/items/{item.id}",
+            json={"quantity": 5},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+    def test_list_items_find_by_customer_id_fallback(self):
+        """It should find shopcart by id when customer_id fails (covers shopcarts.py line 802-828)"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        # Use cart.id as customer_id (should fallback to Shopcart.find)
+        resp = self.client.get(f"{BASE_URL}/{cart.id}/items")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+    def test_list_items_not_found_by_customer_id_or_id(self):
+        """It should return 404 when shopcart not found (covers shopcarts.py line 802-828)"""
+        resp = self.client.get(f"{BASE_URL}/99999/items")
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn("was not found", resp.get_json()["message"])
+
+    def test_get_item_find_by_customer_id_fallback(self):
+        """It should find shopcart by id when customer_id fails (covers shopcarts.py line 840-863)"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        item = ShopcartItemFactory(shopcart_id=cart.id, product_id=100)
+        item.create()
+        # Use cart.id as customer_id (should fallback to Shopcart.find)
+        resp = self.client.get(f"{BASE_URL}/{cart.id}/items/{item.product_id}")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+    def test_get_item_not_found_by_customer_id_or_id(self):
+        """It should return 404 when shopcart not found (covers shopcarts.py line 840-863)"""
+        resp = self.client.get(f"{BASE_URL}/99999/items/100")
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn("was not found", resp.get_json()["message"])
+
+    def test_get_item_find_by_item_id_fallback(self):
+        """It should find item by item.id when product_id fails (covers shopcarts.py line 840-863)"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        item = ShopcartItemFactory(shopcart_id=cart.id, product_id=100)
+        item.create()
+        # Use item.id as product_id (should fallback to ShopcartItem.find)
+        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items/{item.id}")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+    def test_get_item_not_found_by_product_id_or_item_id(self):
+        """It should return 404 when item not found (covers shopcarts.py line 840-863)"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        # Add an item first to ensure shopcart has items
+        item = ShopcartItemFactory(shopcart_id=cart.id, product_id=100)
+        item.create()
+        # Try to get non-existent item
+        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items/99999")
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn("not found", resp.get_json()["message"])
+
+    def test_delete_item_find_by_customer_id_fallback(self):
+        """It should find shopcart by id when customer_id fails (covers shopcarts.py line 929-957)"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        item = ShopcartItemFactory(shopcart_id=cart.id, product_id=100)
+        item.create()
+        # Use cart.id as customer_id (should fallback to Shopcart.find)
+        resp = self.client.delete(f"{BASE_URL}/{cart.id}/items/{item.product_id}")
+        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_delete_item_not_found_by_customer_id_or_id(self):
+        """It should return 404 when shopcart not found (covers shopcarts.py line 929-957)"""
+        resp = self.client.delete(f"{BASE_URL}/99999/items/100")
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn("was not found", resp.get_json()["message"])
+
+    def test_delete_item_find_by_item_id_fallback(self):
+        """It should find item by item.id when product_id fails (covers shopcarts.py line 929-957)"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        item = ShopcartItemFactory(shopcart_id=cart.id, product_id=100)
+        item.create()
+        # Use item.id as product_id (should fallback to ShopcartItem.find)
+        resp = self.client.delete(f"{BASE_URL}/{cart.customer_id}/items/{item.id}")
+        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_delete_item_not_found_by_product_id_or_item_id(self):
+        """It should return 404 when item not found (covers shopcarts.py line 929-957)"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        # Add an item first to ensure shopcart has items
+        item = ShopcartItemFactory(shopcart_id=cart.id, product_id=100)
+        item.create()
+        # Try to delete non-existent item
+        resp = self.client.delete(f"{BASE_URL}/{cart.customer_id}/items/99999")
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn("not found", resp.get_json()["message"])
+
+    # Additional tests to improve coverage for shopcarts.py
+    def test_resolve_description_existing_item_none_with_payload_description(self):
+        """It should use payload description when existing_item is None (covers shopcarts.py line 136-137)"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        # Add new item with description
+        resp = self.client.post(
+            f"{BASE_URL}/{cart.customer_id}/items",
+            json={
+                "product_id": 100,
+                "quantity": 1,
+                "price": 10.0,
+                "description": "New item",
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(resp.get_json()["description"], "New item")
+
+    def test_get_item_find_by_item_id_when_product_id_not_found(self):
+        """It should find item by item.id when product_id not found (covers shopcarts.py line 854-877)"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        item = ShopcartItemFactory(shopcart_id=cart.id, product_id=100)
+        item.create()
+        # Use item.id instead of product_id
+        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items/{item.id}")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.get_json()["id"], item.id)
+
+    def test_put_item_detect_shopcart_id_route_and_abort(self):
+        """It should detect shopcart_id route and abort (covers shopcarts.py line 896)"""
+        cart1 = ShopcartFactory(status="active")
+        cart1.create()
+        cart2 = ShopcartFactory(status="active")
+        cart2.create()
+        item = ShopcartItemFactory(shopcart_id=cart2.id, product_id=100)
+        item.create()
+        # Try to update using cart1.id as customer_id, but item belongs to cart2
+        # This should detect it's a shopcart_id route and abort
+        resp = self.client.put(
+            f"{BASE_URL}/{cart1.id}/items/{item.product_id}",
+            json={"quantity": 5},
+            content_type="application/json",
+        )
+        # Should return 404 because cart1.id doesn't match cart2.customer_id
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_delete_item_find_by_item_id_when_product_id_not_found(self):
+        """It should find item by item.id when product_id not found (covers shopcarts.py line 943-971)"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        item = ShopcartItemFactory(shopcart_id=cart.id, product_id=100)
+        item.create()
+        # Use item.id instead of product_id
+        resp = self.client.delete(f"{BASE_URL}/{cart.customer_id}/items/{item.id}")
+        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_post_items_find_existing_item_returns_item(self):
+        """It should find existing item when adding (covers shopcarts.py line 234, 778)"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        item = ShopcartItemFactory(shopcart_id=cart.id, product_id=100, quantity=2)
+        item.create()
+        # Add more quantity to existing item
+        resp = self.client.post(
+            f"{BASE_URL}/{cart.customer_id}/items",
+            json={"product_id": 100, "quantity": 3},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        # Quantity should be incremented
+        self.assertEqual(resp.get_json()["quantity"], 5)
+
+    def test_get_update_response_is_item_id_true_and_item_found_in_shopcart(self):
+        """It should return item when is_item_id=True and item found (covers shopcarts.py line 288-290)"""
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        item = ShopcartItemFactory(shopcart_id=cart.id, product_id=100)
+        item.create()
+        # Update using item.id - this should trigger is_item_id=True
+        resp = self.client.put(
+            f"{BASE_URL}/{cart.customer_id}/items/{item.id}",
+            json={"quantity": 5},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        # The response could be either item or shopcart depending on _get_update_response logic
+        result = resp.get_json()
+        self.assertIn("id", result)

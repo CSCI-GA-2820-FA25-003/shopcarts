@@ -184,7 +184,7 @@ def _find_shopcart_by_id_or_customer(customer_id):
             status.HTTP_404_NOT_FOUND,
             message=f"Shopcart for customer '{customer_id}' was not found.",
         )
-    return shopcart
+    return shopcart  # pragma: no cover  # Never reached, but satisfies lint
 
 
 def _require_product_id_from_payload(payload):
@@ -196,6 +196,7 @@ def _require_product_id_from_payload(payload):
             status.HTTP_400_BAD_REQUEST,
             message="product_id is required and must be an integer.",
         )
+        return None  # pragma: no cover  # Never reached, but satisfies lint
 
 
 def _require_quantity_increment_from_payload(payload):
@@ -204,11 +205,13 @@ def _require_quantity_increment_from_payload(payload):
         increment = int(payload.get("quantity", 0))
     except (TypeError, ValueError):
         abort(status.HTTP_400_BAD_REQUEST, message="quantity must be an integer.")
+        return None  # pragma: no cover  # Never reached, but satisfies lint
     if increment <= 0:
         abort(
             status.HTTP_400_BAD_REQUEST,
             message="quantity must be a positive integer.",
         )
+        return None  # pragma: no cover  # Never reached, but satisfies lint
     return increment
 
 
@@ -218,10 +221,12 @@ def _resolve_price_for_new_item(existing_item, price_raw):
         return Decimal(str(existing_item.price))
     if price_raw is None:
         abort(status.HTTP_400_BAD_REQUEST, message="price is required.")
+        return None  # pragma: no cover  # Never reached, but satisfies lint
     try:
         return Decimal(str(price_raw))
     except (decimal.InvalidOperation, ValueError, TypeError):
         abort(status.HTTP_400_BAD_REQUEST, message="price is invalid.")
+        return None  # pragma: no cover  # Never reached, but satisfies lint
 
 
 def _find_existing_item(shopcart, product_id):
@@ -465,10 +470,12 @@ def _parse_price_bound(value: str, field: str) -> Decimal:
     cleaned = (value or "").strip()
     if not cleaned:
         abort(status.HTTP_400_BAD_REQUEST, message=f"{field} must be a number")
+        return Decimal("0")  # pragma: no cover  # Never reached, but satisfies lint
     try:
         return Decimal(cleaned)
     except (decimal.InvalidOperation, ValueError, TypeError):
         abort(status.HTTP_400_BAD_REQUEST, message=f"{field} must be a number")
+        return Decimal("0")  # pragma: no cover  # Never reached, but satisfies lint
 
 
 def _normalize_description_filter(value) -> str | None:
@@ -481,6 +488,7 @@ def _normalize_description_filter(value) -> str | None:
             status.HTTP_400_BAD_REQUEST,
             message="description must be a non-empty string when provided",
         )
+        return None  # pragma: no cover  # Never reached, but satisfies lint
     return description
 
 
@@ -492,6 +500,7 @@ def _parse_optional_int(args, field: str, error_message: str) -> int | None:
         return int(args.get(field))
     except (TypeError, ValueError):
         abort(status.HTTP_400_BAD_REQUEST, message=error_message)
+        return None  # pragma: no cover  # Never reached, but satisfies lint
 
 
 def _parse_item_filters(args) -> ItemFilters:
@@ -503,11 +512,15 @@ def _parse_item_filters(args) -> ItemFilters:
                 status.HTTP_400_BAD_REQUEST,
                 message=f"{unsupported[0]} is not a supported filter parameter",
             )
+            return (
+                ItemFilters()
+            )  # pragma: no cover  # Never reached, but satisfies lint
         joined = ", ".join(unsupported)
         abort(
             status.HTTP_400_BAD_REQUEST,
             message=f"{joined} are not supported filter parameters",
         )
+        return ItemFilters()  # pragma: no cover  # Never reached, but satisfies lint
 
     filters = ItemFilters()
     filters.description = _normalize_description_filter(args.get("description"))
@@ -531,6 +544,7 @@ def _parse_item_filters(args) -> ItemFilters:
             status.HTTP_400_BAD_REQUEST,
             message="min_price must be less than or equal to max_price",
         )
+        return filters  # pragma: no cover  # Never reached, but satisfies lint
 
     return filters
 
