@@ -36,7 +36,7 @@ from .factories import ShopcartFactory, ShopcartItemFactory
 DATABASE_URI = os.getenv(
     "DATABASE_URI", "postgresql+psycopg://postgres:postgres@localhost:5432/testdb"
 )
-BASE_URL = "/shopcarts"
+BASE_URL = "/api/shopcarts"
 
 
 ######################################################################
@@ -164,7 +164,7 @@ class TestYourResourceService(TestCase):
         # Verify paths section
         paths = data["paths"]
         self.assertIn("shopcarts", paths)
-        self.assertEqual(paths["shopcarts"], "/shopcarts")
+        self.assertEqual(paths["shopcarts"], "/api/shopcarts")
 
     # ----------------------------------------------------------
     # TEST CREATE
@@ -1006,7 +1006,7 @@ class TestYourResourceService(TestCase):
     def test_add_item_shopcart_not_found(self):
         """It should return 404 when adding an item to a missing cart"""
         resp = self.client.post(
-            "/shopcarts/999/items",
+            "/api/shopcarts/999/items",
             json={"product_id": 1, "quantity": 1, "price": 1.0},
             content_type="application/json",
         )
@@ -1016,14 +1016,14 @@ class TestYourResourceService(TestCase):
         """It should return 404 when the item id is not in the cart"""
         cart = ShopcartFactory(status="active")
         cart.create()
-        resp = self.client.get(f"/shopcarts/{cart.customer_id}/items/123456")
+        resp = self.client.get(f"/api/shopcarts/{cart.customer_id}/items/123456")
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_delete_item_missing_in_cart(self):
         """It should return 404 when deleting an item not present in the cart"""
         cart = ShopcartFactory(status="active")
         cart.create()
-        resp = self.client.delete(f"/shopcarts/{cart.customer_id}/items/999")
+        resp = self.client.delete(f"/api/shopcarts/{cart.customer_id}/items/999")
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_update_item_quantity_valid(self):
@@ -1212,14 +1212,14 @@ class TestYourResourceService(TestCase):
     def test_add_item_to_existing_shopcart(self):
         """It should successfully add an item to an existing shopcart"""
         resp = self.client.post(
-            "/shopcarts",
+            "/api/shopcarts",
             json={"customer_id": 1, "status": "active"},
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
 
         resp = self.client.post(
-            "/shopcarts/1/items",
+            "/api/shopcarts/1/items",
             json={
                 "product_id": 100,
                 "quantity": 2,
@@ -1255,12 +1255,12 @@ class TestYourResourceService(TestCase):
     def test_add_item_requires_product_id(self):
         """It should reject item creation without a product_id"""
         self.client.post(
-            "/shopcarts",
+            "/api/shopcarts",
             json={"customer_id": 1, "status": "active"},
             content_type="application/json",
         )
         resp = self.client.post(
-            "/shopcarts/1/items",
+            "/api/shopcarts/1/items",
             json={"quantity": 1, "price": 9.99},
             content_type="application/json",
         )
@@ -1270,12 +1270,12 @@ class TestYourResourceService(TestCase):
     def test_add_item_product_id_must_be_integer(self):
         """It should reject non-integer product ids"""
         self.client.post(
-            "/shopcarts",
+            "/api/shopcarts",
             json={"customer_id": 1, "status": "active"},
             content_type="application/json",
         )
         resp = self.client.post(
-            "/shopcarts/1/items",
+            "/api/shopcarts/1/items",
             json={"product_id": "abc", "quantity": 1, "price": 9.99},
             content_type="application/json",
         )
@@ -1284,12 +1284,12 @@ class TestYourResourceService(TestCase):
     def test_add_item_quantity_must_be_integer(self):
         """It should reject non-integer quantities"""
         self.client.post(
-            "/shopcarts",
+            "/api/shopcarts",
             json={"customer_id": 1, "status": "active"},
             content_type="application/json",
         )
         resp = self.client.post(
-            "/shopcarts/1/items",
+            "/api/shopcarts/1/items",
             json={"product_id": 100, "quantity": "two", "price": 9.99},
             content_type="application/json",
         )
@@ -1299,12 +1299,12 @@ class TestYourResourceService(TestCase):
     def test_add_item_quantity_must_be_positive(self):
         """It should reject zero or negative quantities"""
         self.client.post(
-            "/shopcarts",
+            "/api/shopcarts",
             json={"customer_id": 1, "status": "active"},
             content_type="application/json",
         )
         resp = self.client.post(
-            "/shopcarts/1/items",
+            "/api/shopcarts/1/items",
             json={"product_id": 100, "quantity": 0, "price": 9.99},
             content_type="application/json",
         )
@@ -1313,12 +1313,12 @@ class TestYourResourceService(TestCase):
     def test_add_item_requires_price_for_new_product(self):
         """It should require price when adding a new product"""
         self.client.post(
-            "/shopcarts",
+            "/api/shopcarts",
             json={"customer_id": 1, "status": "active"},
             content_type="application/json",
         )
         resp = self.client.post(
-            "/shopcarts/1/items",
+            "/api/shopcarts/1/items",
             json={"product_id": 100, "quantity": 1},
             content_type="application/json",
         )
@@ -1328,12 +1328,12 @@ class TestYourResourceService(TestCase):
     def test_add_item_price_must_parse(self):
         """It should reject prices that cannot be parsed"""
         self.client.post(
-            "/shopcarts",
+            "/api/shopcarts",
             json={"customer_id": 1, "status": "active"},
             content_type="application/json",
         )
         resp = self.client.post(
-            "/shopcarts/1/items",
+            "/api/shopcarts/1/items",
             json={"product_id": 100, "quantity": 1, "price": "not-a-number"},
             content_type="application/json",
         )
@@ -1342,19 +1342,19 @@ class TestYourResourceService(TestCase):
     def test_add_item_existing_product_increments_quantity(self):
         """It should merge with existing items and reuse stored price when price omitted"""
         self.client.post(
-            "/shopcarts",
+            "/api/shopcarts",
             json={"customer_id": 1, "status": "active"},
             content_type="application/json",
         )
         first = self.client.post(
-            "/shopcarts/1/items",
+            "/api/shopcarts/1/items",
             json={"product_id": 100, "quantity": 2, "price": 10.00},
             content_type="application/json",
         )
         self.assertEqual(first.status_code, status.HTTP_201_CREATED)
 
         second = self.client.post(
-            "/shopcarts/1/items",
+            "/api/shopcarts/1/items",
             json={"product_id": 100, "quantity": 1},
             content_type="application/json",
         )
@@ -1366,56 +1366,56 @@ class TestYourResourceService(TestCase):
     def test_read_item_from_shopcart(self):
         """It should read an existing item from a shopcart"""
         resp = self.client.post(
-            "/shopcarts",
+            "/api/shopcarts",
             json={"customer_id": 1, "status": "active"},
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
 
         resp = self.client.post(
-            "/shopcarts/1/items",
+            "/api/shopcarts/1/items",
             json={"product_id": 100, "quantity": 2, "price": 9.99},
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
         product_id = resp.get_json()["product_id"]
 
-        resp = self.client.get(f"/shopcarts/1/items/{product_id}")
+        resp = self.client.get(f"/api/shopcarts/1/items/{product_id}")
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
 
     def test_read_item_from_nonexistent_shopcart(self):
         """It should return 404 if the shopcart does not exist"""
-        resp = self.client.get("/shopcarts/999/items/1")
+        resp = self.client.get("/api/shopcarts/999/items/1")
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_read_item_not_in_this_shopcart(self):
         """It should return 404 if the item is not in the customer's shopcart"""
         # create a shopcart and add an item
         self.client.post(
-            "/shopcarts",
+            "/api/shopcarts",
             json={"customer_id": 1, "status": "active"},
             content_type="application/json",
         )
         self.client.post(
-            "/shopcarts/1/items",
+            "/api/shopcarts/1/items",
             json={"product_id": 101, "quantity": 2, "price": 9.99},
             content_type="application/json",
         )
 
         # read item from a different (non-existent) cart
-        resp = self.client.get("/shopcarts/2/items/1")
+        resp = self.client.get("/api/shopcarts/2/items/1")
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_delete_item_from_shopcart(self):
         """It should delete an item from the shopcart"""
         # create a shopcart and add an item
         resp = self.client.post(
-            "/shopcarts", json={"customer_id": 1, "status": "active"}
+            "/api/shopcarts", json={"customer_id": 1, "status": "active"}
         )
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
 
         resp = self.client.post(
-            "/shopcarts/1/items",
+            "/api/shopcarts/1/items",
             json={"product_id": 123, "quantity": 2, "price": 10.5},
             content_type="application/json",
         )
@@ -1423,36 +1423,36 @@ class TestYourResourceService(TestCase):
         product_id = resp.get_json()["product_id"]
 
         # delete the item by product id
-        resp = self.client.delete(f"/shopcarts/1/items/{product_id}")
+        resp = self.client.delete(f"/api/shopcarts/1/items/{product_id}")
         self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
 
     def test_delete_nonexistent_item(self):
         """It should return 404 when deleting a non-existing item"""
-        resp = self.client.delete("/shopcarts/1/items/999")
+        resp = self.client.delete("/api/shopcarts/1/items/999")
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_list_items_in_shopcart(self):
         """It should list all items in a shopcart"""
         # create a shopcart
         resp = self.client.post(
-            "/shopcarts", json={"customer_id": 1, "status": "active"}
+            "/api/shopcarts", json={"customer_id": 1, "status": "active"}
         )
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
 
         # add multiple items
         self.client.post(
-            "/shopcarts/1/items",
+            "/api/shopcarts/1/items",
             json={"product_id": 101, "quantity": 1, "price": 9.99},
             content_type="application/json",
         )
         self.client.post(
-            "/shopcarts/1/items",
+            "/api/shopcarts/1/items",
             json={"product_id": 102, "quantity": 2, "price": 19.99},
             content_type="application/json",
         )
 
         # add an item to a different cart to ensure isolation
-        resp = self.client.get("/shopcarts/1/items")
+        resp = self.client.get("/api/shopcarts/1/items")
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         data = resp.get_json()
         self.assertEqual(len(data), 2)
@@ -1640,7 +1640,7 @@ class TestYourResourceService(TestCase):
 
     def test_list_items_in_nonexistent_shopcart(self):
         """It should return 404 if the shopcart does not exist"""
-        resp = self.client.get("/shopcarts/999/items")
+        resp = self.client.get("/api/shopcarts/999/items")
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
     # ----------------------------------------------------------
@@ -1649,7 +1649,7 @@ class TestYourResourceService(TestCase):
 
     def test_check_content_type_missing_header(self):
         """It should abort when Content-Type header is missing"""
-        with app.test_request_context("/shopcarts", method="POST"):
+        with app.test_request_context("/api/shopcarts", method="POST"):
             with self.assertRaises(HTTPException) as raised:
                 routes.check_content_type("application/json")
         self.assertEqual(raised.exception.code, status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
@@ -1657,7 +1657,7 @@ class TestYourResourceService(TestCase):
     def test_check_content_type_invalid(self):
         """It should abort when Content-Type is incorrect"""
         with app.test_request_context(
-            "/shopcarts",
+            "/api/shopcarts",
             method="POST",
             headers={"Content-Type": "text/plain"},
         ):
