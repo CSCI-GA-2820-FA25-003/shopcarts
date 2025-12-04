@@ -873,7 +873,27 @@ class ShopcartItemResource(Resource):
     )
     def put(self, customer_id: int, product_id: int):
         """Update a single item in a shopcart."""
-        shopcart = _find_shopcart_by_id_or_customer(customer_id)
+        # First try to find by customer_id
+        shopcart = Shopcart.find_by_customer_id(customer_id).first()
+        
+        # If not found by customer_id, try by shopcart.id
+        # But if found by shopcart.id and customer_id doesn't match, this is a shopcart_id route
+        if not shopcart:
+            shopcart = Shopcart.find(customer_id)
+            if shopcart and shopcart.customer_id != customer_id:
+                # This is a shopcart_id route, not a customer_id route
+                # Return 404 to let Flask try the next matching route (items route)
+                abort(
+                    status.HTTP_404_NOT_FOUND,
+                    message=f"Shopcart for customer '{customer_id}' was not found.",
+                )
+        
+        if not shopcart:
+            abort(
+                status.HTTP_404_NOT_FOUND,
+                message=f"Shopcart for customer '{customer_id}' was not found.",
+            )
+        
         check_content_type("application/json")
         payload = request.get_json() or {}
 

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from flask import current_app as app, request
 from flask_restx import Resource, Namespace, fields, abort
 
-from service.models import Shopcart, ShopcartItem
+from service.models import Shopcart, ShopcartItem, db
 from service.common import status
 
 # Create a namespace for items
@@ -463,7 +463,7 @@ class ItemResource(Resource):
 
     @api.doc("update_item")
     @api.expect(item_update_model)
-    @api.marshal_with(item_model, code=status.HTTP_200_OK)
+    @api.response(200, "Item updated successfully", item_model)
     @api.response(400, "Bad Request", message_model)
     @api.response(404, "Shopcart or Item not found", message_model)
     @api.response(409, "Conflict", message_model)
@@ -472,6 +472,51 @@ class ItemResource(Resource):
         app.logger.info(
             f"Request to update item {item_id} in shopcart {shopcart_id}"
         )
+
+        # Check if shopcart_id is actually a customer_id (by checking if it matches a customer_id)
+        # If so, delegate to the shopcarts route handler logic
+        shopcart_by_customer = Shopcart.find_by_customer_id(shopcart_id).first()
+        if shopcart_by_customer and shopcart_by_customer.customer_id == shopcart_id:
+            # This is a customer_id route, delegate to shopcarts route logic
+            # Import here to avoid circular imports
+            from service.resources.shopcarts import (
+                _find_item_by_product_or_id,
+                _parse_quantity_from_payload,
+                _parse_price_from_payload,
+                _validate_shopcart_status_for_update,
+                _update_shopcart_item,
+                _get_update_response,
+                _check_if_product_id_is_item_id,
+                _handle_zero_quantity_update,
+                check_content_type,
+            )
+            from service.common import status as http_status
+            
+            shopcart = shopcart_by_customer
+            check_content_type("application/json")
+            payload = request.get_json() or {}
+            
+            _validate_shopcart_status_for_update(shopcart)
+            
+            # item_id might be product_id in this case
+            current = _find_item_by_product_or_id(shopcart, item_id)
+            if current is None:
+                abort(
+                    http_status.HTTP_404_NOT_FOUND,
+                    f"Item with product_id '{item_id}' not found in this shopcart.",
+                )
+            
+            q = _parse_quantity_from_payload(payload, current)
+            if q == 0:
+                return _handle_zero_quantity_update(shopcart, current)
+            
+            price = _parse_price_from_payload(payload, current)
+            desc = payload.get("description", current.description or "")
+            is_item_id = _check_if_product_id_is_item_id(item_id)
+            
+            _update_shopcart_item(shopcart, current, q, price, desc)
+            # For customer_id routes, always return shopcart (not item)
+            return shopcart.serialize(), http_status.HTTP_200_OK
 
         shopcart, item = _validate_shopcart_and_item(shopcart_id, item_id)
         _check_shopcart_status(shopcart)
@@ -491,20 +536,17 @@ class ItemResource(Resource):
         )
         shopcart.update()
 
-        # Find the updated item (try both item.id and product_id)
-        updated_item = ShopcartItem.find(item_id)
+        # upsert_item updates the existing item in-place, so we can use the original item
+        # Find the updated item from shopcart.items to ensure we have the latest data
+        updated_item = next(
+            (it for it in shopcart.items if it.id == item.id),
+            None,
+        )
         if not updated_item:
-            # Try finding by product_id in case the route was matched incorrectly
-            updated_item = next(
-                (it for it in shopcart.items if it.product_id == item_id),
-                None,
-            )
-        if not updated_item:
-            abort(
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "Unable to retrieve updated item.",
-            )
-
+            # Fallback to the original item if not found in items list
+            updated_item = item
+            db.session.refresh(updated_item)
+        
         return updated_item.serialize(), status.HTTP_200_OK
 
     @api.doc("delete_item")

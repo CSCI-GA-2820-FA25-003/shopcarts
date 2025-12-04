@@ -55,11 +55,11 @@ def create_app():
         from service import routes, models  # noqa: F401 E402
         from service.common import error_handlers, cli_commands  # noqa: F401, E402
 
-        # Register shopcarts namespace first to ensure customer_id routes match before shopcart_id routes
-        # This allows /api/shopcarts/<customer_id>/items/<product_id> to work correctly
-        api.add_namespace(shopcart_ns)
-        # Then register items namespace (uses shopcart_id)
+        # Register items namespace first to ensure shopcart_id routes match before customer_id routes
+        # This allows /api/shopcarts/<shopcart_id>/items/<item_id> to work correctly
         register_namespaces()
+        # Then register shopcarts namespace (uses customer_id)
+        api.add_namespace(shopcart_ns)
 
         try:
             db.create_all()
