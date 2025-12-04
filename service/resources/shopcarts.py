@@ -554,6 +554,21 @@ def _parse_item_filters(args) -> ItemFilters:
     return filters
 
 
+def _apply_item_filters(query, filters: ItemFilters):
+    """Apply filters to a shopcart item query."""
+    if filters.description is not None:
+        query = query.filter(ShopcartItem.description.ilike(f"%{filters.description}%"))
+    if filters.product_id is not None:
+        query = query.filter(ShopcartItem.product_id == filters.product_id)
+    if filters.quantity is not None:
+        query = query.filter(ShopcartItem.quantity == filters.quantity)
+    if filters.min_price is not None:
+        query = query.filter(ShopcartItem.price >= filters.min_price)
+    if filters.max_price is not None:
+        query = query.filter(ShopcartItem.price <= filters.max_price)
+    return query
+
+
 def _parse_iso8601_to_utc(value: str, field: str) -> datetime:
     """Parse an ISO8601 string into a UTC naive datetime for database comparison."""
     cleaned = (value or "").strip()
@@ -828,30 +843,10 @@ class ShopcartItemsCollectionResource(Resource):
     def get(self, customer_id):
         """List all items in a customer's shopcart."""
         try:
-            # Try finding by customer_id first, then by shopcart.id
-            shopcart = Shopcart.find_by_customer_id(customer_id).first()
-            if not shopcart:
-                shopcart = Shopcart.find(customer_id)
-            if not shopcart:
-                raise NotFoundError(
-                    f"Shopcart for customer '{customer_id}' was not found."
-                )
-
+            shopcart = _find_shopcart_by_id_or_customer(customer_id)
             filters = _parse_item_filters(request.args)
             query = ShopcartItem.find_by_shopcart_id(shopcart.id)
-            if filters.description is not None:
-                query = query.filter(
-                    ShopcartItem.description.ilike(f"%{filters.description}%")
-                )
-            if filters.product_id is not None:
-                query = query.filter(ShopcartItem.product_id == filters.product_id)
-            if filters.quantity is not None:
-                query = query.filter(ShopcartItem.quantity == filters.quantity)
-            if filters.min_price is not None:
-                query = query.filter(ShopcartItem.price >= filters.min_price)
-            if filters.max_price is not None:
-                query = query.filter(ShopcartItem.price <= filters.max_price)
-
+            query = _apply_item_filters(query, filters)
             items = query.order_by(ShopcartItem.id).all()
             results = [item.serialize() for item in items]
             return results, status.HTTP_200_OK

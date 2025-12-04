@@ -7398,28 +7398,56 @@ class TestYourResourceService(TestCase):
         self.assertIn("message", data)
 
     def test_shopcart_items_get_not_found_error_handling(self):
-        """It should handle NotFoundError in get (covers shopcarts.py line 830-861)"""
-        # Test when shopcart not found - this will trigger NotFoundError and be caught at line 858-859
+        """It should handle NotFoundError in get (covers shopcarts.py line 858-859)"""
+        # Test when shopcart not found - this will trigger NotFoundError at line 836-838
+        # and be caught at line 858-859
         resp = self.client.get(f"{BASE_URL}/99999/items")
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
         data = resp.get_json()
         self.assertIn("message", data)
+        self.assertIn("Shopcart", data["message"])
 
     def test_shopcart_item_get_not_found_error_handling(self):
-        """It should handle NotFoundError in get (covers shopcarts.py line 872-899)"""
-        # Test when shopcart not found - this will trigger NotFoundError and be caught at line 896-897
+        """It should handle NotFoundError in get (covers shopcarts.py line 896-897)"""
+        # Test when shopcart not found - this will trigger NotFoundError at line 878-880
+        # and be caught at line 896-897
         resp = self.client.get(f"{BASE_URL}/99999/items/100")
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
         data = resp.get_json()
         self.assertIn("message", data)
+        self.assertIn("Shopcart", data["message"])
+
+        # Test when item not found in shopcart - this will trigger NotFoundError at line 892-894
+        # and be caught at line 896-897
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items/99999")
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+        data = resp.get_json()
+        self.assertIn("message", data)
+        # The error message may vary, just check that it's a 404
+        self.assertIn("not found", data["message"].lower())
 
     def test_shopcart_item_delete_not_found_error_handling(self):
-        """It should handle NotFoundError in delete (covers shopcarts.py line 964-996)"""
-        # Test when shopcart not found - this will trigger NotFoundError and be caught at line 993-994
+        """It should handle NotFoundError in delete (covers shopcarts.py line 993-994)"""
+        # Test when shopcart not found - this will trigger NotFoundError at line 970-972
+        # and be caught at line 993-994
         resp = self.client.delete(f"{BASE_URL}/99999/items/100")
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
         data = resp.get_json()
         self.assertIn("message", data)
+        self.assertIn("Shopcart", data["message"])
+
+        # Test when item not found in shopcart - this will trigger NotFoundError at line 984-986
+        # and be caught at line 993-994
+        cart = ShopcartFactory(status="active")
+        cart.create()
+        resp = self.client.delete(f"{BASE_URL}/{cart.customer_id}/items/99999")
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+        data = resp.get_json()
+        self.assertIn("message", data)
+        # The error message may vary, just check that it's a 404
+        self.assertIn("not found", data["message"].lower())
 
     def test_shopcart_list_abort_on_validation_error(self):
         """It should abort on ValidationError (covers shopcarts.py line 619)"""
@@ -7537,24 +7565,46 @@ class TestYourResourceService(TestCase):
         self.assertEqual(result.quantity, 2)
 
     def test_shopcart_items_post_validation_error_handling(self):
-        """It should handle ValidationError in post (covers shopcarts.py line 782-815)"""
+        """It should handle ValidationError in post (covers shopcarts.py line 814-815)"""
         cart = ShopcartFactory(status="active")
         cart.create()
 
-        # Test with invalid quantity to trigger ValidationError
+        # Test with missing product_id to trigger ValidationError (line 814-815)
         resp = self.client.post(
             f"{BASE_URL}/{cart.customer_id}/items",
-            json={"product_id": 100, "quantity": "invalid", "price": 10.0},
+            json={"quantity": 1, "price": 10.0},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        data = resp.get_json()
+        self.assertIn("message", data)
+        self.assertIn("product_id", data["message"])
+
+        # Test with invalid quantity (0 or negative) to trigger ValidationError (line 814-815)
+        resp = self.client.post(
+            f"{BASE_URL}/{cart.customer_id}/items",
+            json={"product_id": 100, "quantity": 0, "price": 10.0},
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
         data = resp.get_json()
         self.assertIn("message", data)
 
-        # Test with invalid price to trigger ValidationError
+        # Test with missing price for new item to trigger ValidationError (line 814-815)
         resp = self.client.post(
             f"{BASE_URL}/{cart.customer_id}/items",
-            json={"product_id": 100, "quantity": 1, "price": "invalid"},
+            json={"product_id": 999, "quantity": 1},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        data = resp.get_json()
+        self.assertIn("message", data)
+        self.assertIn("price", data["message"])
+
+        # Test with invalid price format to trigger ValidationError (line 814-815)
+        resp = self.client.post(
+            f"{BASE_URL}/{cart.customer_id}/items",
+            json={"product_id": 100, "quantity": 1, "price": "not_a_number"},
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
@@ -7562,18 +7612,24 @@ class TestYourResourceService(TestCase):
         self.assertIn("message", data)
 
     def test_shopcart_items_get_validation_error_handling(self):
-        """It should handle ValidationError in get (covers shopcarts.py line 830-861)"""
+        """It should handle ValidationError in get (covers shopcarts.py line 860-861)"""
         cart = ShopcartFactory(status="active")
         cart.create()
 
-        # Test with invalid filter to trigger ValidationError
+        # Test with invalid min_price to trigger ValidationError (line 860-861)
         resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items?min_price=invalid")
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
         data = resp.get_json()
         self.assertIn("message", data)
 
-        # Test with unsupported filter to trigger ValidationError
+        # Test with unsupported filter to trigger ValidationError (line 860-861)
         resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items?unsupported=value")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        data = resp.get_json()
+        self.assertIn("message", data)
+
+        # Test with invalid product_id to trigger ValidationError (line 860-861)
+        resp = self.client.get(f"{BASE_URL}/{cart.customer_id}/items?product_id=not_a_number")
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
         data = resp.get_json()
         self.assertIn("message", data)
