@@ -429,6 +429,36 @@ class TestYourResourceService(TestCase):
 
         self.assertEqual(ctx.exception.code, status.HTTP_404_NOT_FOUND)
 
+    def test_shopcart_item_resource_get_item_id_wrong_shopcart_coverage(self):
+        """It should return 404 when item is found by id but belongs to a different shopcart in get()."""
+        cart1 = ShopcartFactory(status="active")
+        cart1.create()
+        cart2 = ShopcartFactory(status="active")
+        cart2.create()
+
+        # Item belongs to cart1
+        item = ShopcartItemFactory(
+            shopcart_id=cart1.id,
+            product_id=555,
+            quantity=1,
+            price=Decimal("5.00"),
+        )
+        item.create()
+
+        resource = ShopcartItemResource()
+
+        # Use cart2.customer_id but pass item.id as product_id so that
+        # ShopcartItem.find(product_id) finds an item whose shopcart_id != cart2.id
+        with app.test_request_context(
+            f"{BASE_URL}/{cart2.customer_id}/items/{item.id}",
+            method="GET",
+            content_type="application/json",
+        ):
+            with self.assertRaises(HTTPException) as ctx:
+                resource.get(cart2.customer_id, item.id)
+
+        self.assertEqual(ctx.exception.code, status.HTTP_404_NOT_FOUND)
+
     def test_shopcart_item_resource_get_validation_error_abort_coverage(self):
         """It should abort with 400 when a ValidationError is raised inside get()."""
         resource = ShopcartItemResource()
