@@ -28,6 +28,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from service import create_app
 from service.__init__ import _ensure_optional_columns
 from service.common import log_handlers
+from service.api import api, register_namespaces
 
 
 class TestLoggingUtilities(TestCase):
@@ -68,11 +69,40 @@ class TestAppFactory(TestCase):
         self.assertEqual(raised.exception.code, 4)
 
 
+class TestApiInitialization(TestCase):
+    """Test Flask-RESTX API initialization and namespace registration."""
+
+    def test_api_instance_created(self):
+        """It should create a Flask-RESTX Api instance with correct configuration."""
+        self.assertIsNotNone(api)
+        self.assertEqual(api.version, "1.0.0")
+        self.assertEqual(api.title, "Shopcart REST API Service")
+        self.assertEqual(
+            api.description, "This service manages customer shopcarts and their items."
+        )
+
+    def test_register_namespaces(self):
+        """It should register all API namespaces."""
+        test_app = Flask(__name__)
+        api.init_app(test_app)
+
+        # Clear any existing namespaces for clean test
+        api.namespaces.clear()
+
+        # Register namespaces
+        register_namespaces()
+
+        # Verify that items namespace is registered
+        namespace_names = [ns.name for ns in api.namespaces]
+        self.assertIn("items", namespace_names)
+
+
 class TestOptionalColumnBackfill(TestCase):
     """Unit tests for the optional column backfill helper."""
 
     def _make_fake_db(self, connection, rollback_flag):
         """Build a minimal fake db object for backfill testing."""
+
         def _fake_begin():
             return _BeginContext(connection)
 

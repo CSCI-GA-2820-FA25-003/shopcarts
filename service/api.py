@@ -6,10 +6,21 @@ from flask_restx import Api
 api = Api(
     title="Shopcart REST API Service",
     version="1.0.0",
-    description="Shopcart service API documentation",
+    description="This service manages customer shopcarts and their items.",
     prefix="/api",
     doc="/apidocs/",
     errors=False,  # Defer to our global error handlers for consistent JSON
 )
 
-__all__ = ["api"]
+# Import and register namespaces
+# pylint: disable=import-outside-toplevel
+
+
+def register_namespaces():
+    """Register all API namespaces"""
+    from service.resources.items import api as items_namespace
+
+    api.add_namespace(items_namespace)
+
+
+__all__ = ["api", "register_namespaces"]
