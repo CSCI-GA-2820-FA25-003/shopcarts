@@ -477,14 +477,26 @@ spec:
       echo "***** Installing dependencies *****"
       if [ -e "poetry.lock" ]; then
         echo "Found poetry.lock; using poetry"
-        python -m pip install poetry poetry-plugin-export
+        python -m pip install --upgrade pip poetry poetry-plugin-export
+        poetry config virtualenvs.create false
         poetry export --with=dev -f requirements.txt --output requirements.txt
       elif [ -e "Pipfile" ]; then
         echo "Found Pipfile; using pipenv"
         python -m pip install --upgrade pip pipenv
-        pipenv requirements --dev > requirements.txt
+        pipenv install --system --dev
+      elif [ -e "requirements.txt" ]; then
+        echo "Found requirements.txt; using pip"
+        python -m pip install --upgrade pip
+        python -m pip install --user -r requirements.txt
+      else
+        echo "Error: No dependency file found (poetry.lock, Pipfile, or requirements.txt)"
+        exit 1
       fi
 
-      python -m pip install --user -r requirements.txt
-      echo "***** Running Behave *****"
-      behave
+      echo "***** Running Behave BDD tests *****"
+      echo "BASE_URL: ${BASE_URL}"
+      echo "WAIT_SECONDS: ${WAIT_SECONDS}"
+      echo "DRIVER: ${DRIVER}"
+      # Run behave - if any scenario fails, behave will exit with non-zero code
+      # and due to 'set -e', the script will fail, causing the pipeline to fail
+      behave --no-capture

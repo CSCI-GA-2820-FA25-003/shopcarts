@@ -47,7 +47,7 @@ lint: ## Run the linter
 test: ## Run the unit tests
 	$(info Running tests...)
 	pipenv sync --dev --bare >/dev/null
-	export RETRY_COUNT=1; pipenv run pytest --pspec --cov=service --cov-fail-under=95 --disable-warnings
+	export RETRY_COUNT=1; pipenv run pytest --pspec --cov=service --cov-fail-under=100 --disable-warnings
 
 .PHONY: bdd
 bdd: ## Run the Behave Selenium UI scenarios (service must be running)
