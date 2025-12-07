@@ -1,156 +1,157 @@
 apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
-  name: shopcarts-ci
-  namespace: shopcarts
-  labels:
-    app.kubernetes.io/name: shopcarts
-    app.kubernetes.io/component: tekton-pipeline
+  name: cd-pipeline
+
 spec:
-  description: >
-    CI/CD pipeline for the Shopcarts service modeled after the Orders pipeline:
-    clone source, lint, test, deploy manifests, and optionally run Behave tests.
   params:
-  - name: git-repo
-    type: string
-    description: Git repository containing the Shopcarts source.
-    default: https://github.com/CSCI-GA-2820-FA25-003/shopcarts
-  - name: git-ref
-    type: string
-    description: Branch, tag, or commit to checkout.
-    default: master
-  - name: image-name
-    type: string
-    description: Destination image URL for deployment.
-    default: image-registry.openshift-image-registry.svc:5000/shopcarts/shopcarts:latest
-  - name: manifest-dir
-    type: string
-    description: Directory containing Kubernetes manifests.
-    default: k8s
-  - name: base-url
-    type: string
-    description: Base URL for Behave tests (should point to Ingress/Route URL).
-    default: http://127.0.0.1:8080
-  - name: wait-seconds
-    type: string
-    description: Wait time for Behave steps.
-    default: "60"
-  - name: driver
-    type: string
-    description: Web driver to use (chrome or firefox).
-    default: chrome
-  - name: run-behave
-    type: string
-    description: Set to "true" to run Behave tests after deployment.
-    default: "false"
-  workspaces:
-  - name: pipeline-workspace
-    description: PVC-backed workspace shared across tasks.
+    - description: The URL to the git repo
+      name: GIT_REPO
+      type: string
+    - default: master
+      description: The reference (branch or ref)
+      name: GIT_REF
+      type: string
+    - default: petshop
+      description: Name of the application
+      name: APP_NAME
+      type: string
+    - default: 'image-registry.openshift-image-registry.svc:5000/$(context.pipelineRun.namespace)/$(params.APP_NAME):latest'
+      description: The name of the image to build
+      name: IMAGE_NAME
+      type: string
   tasks:
-  - name: git-clone
-    taskRef:
-      kind: Task
-      name: git-clone
-    params:
-    - name: URL
-      value: $(params.git-repo)
-    - name: REVISION
-      value: $(params.git-ref)
-    - name: SUBMODULES
-      value: "true"
-    - name: DEPTH
-      value: "1"
-    - name: DELETE_EXISTING
-      value: "true"
-    workspaces:
-    - name: output
-      workspace: pipeline-workspace
-
-  - name: flake8-lint
-    runAfter:
-    - git-clone
-    taskRef:
-      kind: Task
-      name: flake8-lint
-    workspaces:
-    - name: source
-      workspace: pipeline-workspace
-
-  - name: pylint
-    runAfter:
-    - git-clone
-    taskRef:
-      name: pylint
-    workspaces:
-    - name: source
-      workspace: pipeline-workspace
-    params:
-    - name: path
-      value: .
-
-  - name: pytest
-    runAfter:
-    - git-clone
-    taskRef:
-      name: pytest-env
-    workspaces:
-    - name: source
-      workspace: pipeline-workspace
-
-  - name: unit-test
-    runAfter:
-    - git-clone
-    taskRef:
-      name: unit-test
-    workspaces:
-    - name: source
-      workspace: pipeline-workspace
-
-  - name: deploy-image
-    runAfter:
-    - pytest
-    - flake8-lint
-    - pylint
-    - unit-test
-    taskRef:
-      name: deploy-image
-    params:
-    - name: image-name
-      value: $(params.image-name)
-    - name: manifest-dir
-      value: $(params.manifest-dir)
-    workspaces:
-    - name: source
-      workspace: pipeline-workspace
-
-  - name: apply-manifests
-    runAfter:
-    - deploy-image
-    taskRef:
-      name: apply-manifests
-    params:
-    - name: manifest-dir
-      value: $(params.manifest-dir)
-    workspaces:
-    - name: source
-      workspace: pipeline-workspace
-
-  - name: behave
-    runAfter:
-    - apply-manifests
-    when:
-    - input: $(params.run-behave)
-      operator: in
-      values: ["true"]
-    taskRef:
-      name: behave
-    params:
-    - name: base-url
-      value: $(params.base-url)
-    - name: wait-seconds
-      value: $(params.wait-seconds)
-    - name: driver
-      value: $(params.driver)
-    workspaces:
-    - name: source
-      workspace: pipeline-workspace
+    - name: git-clone
+      params:
+        - name: CRT_FILENAME
+          value: ca-bundle.crt
+        - name: HTTP_PROXY
+          value: ''
+        - name: HTTPS_PROXY
+          value: ''
+        - name: NO_PROXY
+          value: ''
+        - name: SUBDIRECTORY
+          value: ''
+        - name: USER_HOME
+          value: /home/git
+        - name: DELETE_EXISTING
+          value: 'true'
+        - name: VERBOSE
+          value: 'false'
+        - name: SSL_VERIFY
+          value: 'true'
+        - name: URL
+          value: $(params.GIT_REPO)
+        - name: REVISION
+          value: $(params.GIT_REF)
+        - name: REFSPEC
+          value: ''
+        - name: SUBMODULES
+          value: 'true'
+        - name: DEPTH
+          value: '1'
+        - name: SPARSE_CHECKOUT_DIRECTORIES
+          value: ''
+      taskRef:
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: git-clone
+          - name: namespace
+            value: openshift-pipelines
+        resolver: cluster
+      workspaces:
+        - name: output
+          workspace: pipeline-workspace
+    - name: pylint
+      params:
+        - name: image
+          value: 'quay.io/rofrano/python:3.11-slim'
+        - name: path
+          value: service
+        - name: args
+          value: []
+        - name: requirements-file
+          value: requirements.txt
+      runAfter:
+        - git-clone
+      taskRef:
+        kind: Task
+        name: pylint
+      workspaces:
+        - name: source
+          workspace: pipeline-workspace
+    - name: testing
+      params:
+        - name: pytest-args
+          value: []
+        - name: secret-name
+          value: postgres-creds
+        - name: secret-key
+          value: database_uri
+      runAfter:
+        - git-clone
+      taskRef:
+        kind: Task
+        name: pytest-env
+      workspaces:
+        - name: source
+          workspace: pipeline-workspace
+    - name: buildah
+      params:
+        - name: IMAGE
+          value: $(params.IMAGE_NAME)
+        - name: DOCKERFILE
+          value: ./Dockerfile
+        - name: BUILD_ARGS
+          value:
+            - ''
+        - name: CONTEXT
+          value: .
+        - name: STORAGE_DRIVER
+          value: vfs
+        - name: FORMAT
+          value: oci
+        - name: BUILD_EXTRA_ARGS
+          value: ''
+        - name: PUSH_EXTRA_ARGS
+          value: ''
+        - name: SKIP_PUSH
+          value: 'false'
+        - name: TLS_VERIFY
+          value: 'true'
+        - name: VERBOSE
+          value: 'false'
+      runAfter:
+        - pylint
+        - testing
+      taskRef:
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: buildah
+          - name: namespace
+            value: openshift-pipelines
+        resolver: cluster
+      workspaces:
+        - name: source
+          workspace: pipeline-workspace
+    - name: deploy-image
+      params:
+        - name: image-name
+          value: $(params.IMAGE_NAME)
+        - name: manifest-dir
+          value: k8s
+      runAfter:
+        - buildah
+      taskRef:
+        kind: Task
+        name: deploy-image
+      workspaces:
+        - name: source
+          workspace: pipeline-workspace
+  workspaces:
+    - name: pipeline-workspace

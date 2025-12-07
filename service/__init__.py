@@ -21,7 +21,6 @@ and SQL database
 import sys
 
 from flask import Flask, current_app
-from flask_restx import Api
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -41,27 +40,26 @@ def create_app():
     # Initialize Plugins
     # pylint: disable=import-outside-toplevel
     from service.models import db
+    from service.api import api, register_namespaces  # noqa: F401
+
     db.init_app(app)
 
     # Initialize Flask-RESTX API
-    api = Api(
-        app,
-        version="1.0.0",
-        title="Shopcart REST API Service",
-        description="This service manages customer shopcarts and their items.",
-        doc="/apidocs/",
-        prefix="/api",
-    )
+    api.init_app(app)
 
     with app.app_context():
+        from service.resources.shopcarts import ns as shopcart_ns  # noqa: E402
+
         # Dependencies require we import the routes AFTER the Flask app is created
         # pylint: disable=wrong-import-position, wrong-import-order, unused-import
         from service import routes, models  # noqa: F401 E402
         from service.common import error_handlers, cli_commands  # noqa: F401, E402
-        from service.resources import items  # noqa: F401, E402
-        
-        # Register namespaces
-        api.add_namespace(items.api)
+
+        # Register items namespace first to ensure shopcart_id routes match before customer_id routes
+        # This allows /api/shopcarts/<shopcart_id>/items/<item_id> to work correctly
+        register_namespaces()
+        # Then register shopcarts namespace (uses customer_id)
+        api.add_namespace(shopcart_ns)
 
         try:
             db.create_all()
@@ -94,9 +92,13 @@ def _ensure_optional_columns(db):
     if "name" not in columns:
         try:
             with db.engine.begin() as connection:
-                connection.execute(text("ALTER TABLE shopcarts ADD COLUMN name VARCHAR(120)"))
+                connection.execute(
+                    text("ALTER TABLE shopcarts ADD COLUMN name VARCHAR(120)")
+                )
         except SQLAlchemyError as exc:  # pragma: no cover
             # If the column already exists or ALTER fails, log and continue.
             db.session.rollback()
             if logger:
-                logger.warning("Skipping shopcart.name column backfill: %s", exc, exc_info=True)
+                logger.warning(
+                    "Skipping shopcart.name column backfill: %s", exc, exc_info=True
+                )
