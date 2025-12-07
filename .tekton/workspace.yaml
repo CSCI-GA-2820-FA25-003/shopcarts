@@ -2,13 +2,9 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: pipeline-pvc
-  namespace: shopcarts
-  labels:
-    app.kubernetes.io/name: shopcarts
-    app.kubernetes.io/component: tekton-workspace
 spec:
   accessModes:
-  - ReadWriteOnce
+    - ReadWriteOnce
   resources:
     requests:
       storage: 1Gi
