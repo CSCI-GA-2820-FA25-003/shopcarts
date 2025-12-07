@@ -3,6 +3,20 @@ kind: TriggerBinding
 metadata:
   name: shopcarts-github-binding
   namespace: shopcarts
+spec:
+  params:
+    - name: git-url
+      value: $(body.repository.clone_url)
+    - name: git-revision
+      value: $(body.after)
+    - name: git-ref
+      value: $(body.ref)
+
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerBinding
+metadata:
+  name: shopcarts-github-binding
+  namespace: shopcarts
   labels:
     app.kubernetes.io/name: shopcarts
     app.kubernetes.io/component: tekton-trigger
