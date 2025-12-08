@@ -1,13 +1,11 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: shopcarts-deployment
-  # namespace removed
+  name: shopcarts
   labels:
     app: shopcarts
 spec:
-  replicas: 3
-  revisionHistoryLimit: 2
+  replicas: 1
   selector:
     matchLabels:
       app: shopcarts
@@ -16,63 +14,35 @@ spec:
       labels:
         app: shopcarts
     spec:
-      terminationGracePeriodSeconds: 30
-
-      # Wait for the database to be ready before starting the app container to avoid CrashLoop
-      initContainers:
-        - name: wait-for-postgres
-          image: postgres:15-alpine
-          imagePullPolicy: IfNotPresent
-          command:
-            - sh
-            - -c
-            - |
-              echo "Waiting for Postgres at postgres:5432 ..."
-              until pg_isready -h postgres -p 5432 -d shopcarts; do
-                echo "Postgres is not ready yet. Sleeping 2s..."
-                sleep 2
-              done
-              echo "Postgres is ready!"
-          # If your PG is configured with strict authentication, inject the user arg here: -U postgres
-          # pg_isready only checks "accepting connections" and usually does not require a password
-
       containers:
         - name: shopcarts
-          image: cluster-registry:5000/promotions:1.0
+          image: cluster-registry:5000/shopcarts:1.0
           imagePullPolicy: IfNotPresent
-          ports:
-            - name: http
-              containerPort: 8080
-              protocol: TCP
+          command: ["sh","-lc","exec gunicorn -b 0.0.0.0:8080 wsgi:app"]
           env:
-            - name: FLASK_ENV
-              value: "production"
             - name: PORT
               value: "8080"
-            # Inject DATABASE_URI from Secret (replaces the previous hardcoded value)
             - name: DATABASE_URI
               valueFrom:
                 secretKeyRef:
                   name: postgres-creds
                   key: database_uri
+            - name: GUNICORN_WORKERS
+              value: "1"
+          ports:
+            - containerPort: 8080
           readinessProbe:
             httpGet:
               path: /health
               port: 8080
-            initialDelaySeconds: 5
+            initialDelaySeconds: 10
             periodSeconds: 5
-            timeoutSeconds: 2
-            failureThreshold: 3
           livenessProbe:
             httpGet:
               path: /health
               port: 8080
-            initialDelaySeconds: 15
-            periodSeconds: 20
-            timeoutSeconds: 2
-            failureThreshold: 3
-
-          # If you need resource constraints, add requests/limits in K8S-13
+            initialDelaySeconds: 20
+            periodSeconds: 10
           resources:
             requests:
               cpu: "100m"
