@@ -14,6 +14,7 @@ const clearFiltersBtn = document.querySelector("#clear-filters");
 const queryForm = document.querySelector("#query-form");
 const listFilterForm = document.querySelector("#list-filter");
 const listResetFilterBtn = document.querySelector("#list-reset-filter");
+const itemTableBody = document.querySelector("#item-table tbody");
 
 const forms = {
   create: document.querySelector("#create-form"),
@@ -21,6 +22,14 @@ const forms = {
   read: document.querySelector("#read-form"),
   delete: document.querySelector("#delete-form"),
   action: document.querySelector("#action-form"),
+};
+
+const itemForms = {
+  add: document.querySelector("#item-add-form"),
+  update: document.querySelector("#item-update-form"),
+  delete: document.querySelector("#item-delete-form"),
+  read: document.querySelector("#item-read-form"),
+  list: document.querySelector("#item-list-form"),
 };
 
 const formatCurrency = (value) =>
@@ -84,6 +93,7 @@ const normalizeCart = (raw = {}) => {
 
 const renderShopcartCard = (cart) => {
   if (!cart) {
+    renderItemsTable([]);
     resultCard.hidden = true;
     resultCard.innerHTML = "";
     return;
@@ -139,6 +149,7 @@ const renderShopcartCard = (cart) => {
     <div class="items">${itemsHtml}</div>
   `;
   bindResultCardActions(cart);
+  renderItemsTable(cart.items || []);
 };
 
 const renderTable = (carts) => {
@@ -466,6 +477,166 @@ const handleListResetFilter = async () => {
   showAlert("Filter reset - showing all shopcarts", "info");
 };
 
+// ---------------------------------------------------------------------------
+// Item helpers
+// ---------------------------------------------------------------------------
+const renderItemsTable = (items) => {
+  if (!itemTableBody) return;
+  if (!Array.isArray(items) || items.length === 0) {
+    itemTableBody.innerHTML =
+      '<tr><td colspan="4" class="empty">No items to display.</td></tr>';
+    return;
+  }
+  itemTableBody.innerHTML = items
+    .map(
+      (item) => `<tr>
+        <td>${item.product_id ?? item.productId ?? "—"}</td>
+        <td>${item.description ?? "—"}</td>
+        <td>${item.quantity ?? 0}</td>
+        <td>${formatCurrency(item.price)}</td>
+      </tr>`
+    )
+    .join("");
+};
+
+const getItemPayload = (form, { requirePrice = false } = {}) => {
+  const quantityRaw = getFieldValue(form, "quantity");
+  const priceRaw = getFieldValue(form, "price");
+  const descRaw = getFieldValue(form, "description");
+  const payload = {};
+  if (quantityRaw !== "") payload.quantity = Number(quantityRaw);
+  if (priceRaw !== "") payload.price = Number(priceRaw);
+  if (descRaw !== "") payload.description = descRaw;
+  if (requirePrice && payload.price === undefined) {
+    throw new Error("Price is required");
+  }
+  return payload;
+};
+
+const refreshCartAndItems = async (customerId) => {
+  await viewCartById(customerId);
+  try {
+    const items = await apiRequest(`/${customerId}/items`);
+    renderItemsTable(items);
+  } catch (error) {
+    console.error("Failed to refresh items", error);
+  }
+};
+
+const handleItemAdd = async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const customerId = Number(getFieldValue(form, "customerId"));
+  const productId = Number(getFieldValue(form, "productId"));
+  if (!customerId || !productId) {
+    showAlert("Customer ID and Product ID are required", "error");
+    return;
+  }
+  try {
+    const payload = getItemPayload(form, { requirePrice: true });
+    payload.product_id = productId;
+    await apiRequest(`/${customerId}/items`, { method: "POST", body: payload });
+    showAlert(`Added product ${productId} to cart ${customerId}`, "success");
+    form.reset();
+    await refreshCartAndItems(customerId);
+  } catch (error) {
+    showAlert(error.message, "error");
+  }
+};
+
+const handleItemUpdate = async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const customerId = Number(getFieldValue(form, "customerId"));
+  const productId = Number(getFieldValue(form, "productId"));
+  if (!customerId || !productId) {
+    showAlert("Customer ID and Product ID are required", "error");
+    return;
+  }
+  try {
+    const payload = getItemPayload(form);
+    if (!Object.keys(payload).length) {
+      showAlert("Provide at least one field to update", "error");
+      return;
+    }
+    await apiRequest(`/${customerId}/items/${productId}`, {
+      method: "PUT",
+      body: payload,
+    });
+    showAlert(`Updated product ${productId} in cart ${customerId}`, "success");
+    form.reset();
+    await refreshCartAndItems(customerId);
+  } catch (error) {
+    showAlert(error.message, "error");
+  }
+};
+
+const handleItemDelete = async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const customerId = Number(getFieldValue(form, "customerId"));
+  const productId = Number(getFieldValue(form, "productId"));
+  if (!customerId || !productId) {
+    showAlert("Customer ID and Product ID are required", "error");
+    return;
+  }
+  try {
+    await apiRequest(`/${customerId}/items/${productId}`, { method: "DELETE" });
+    showAlert(`Deleted product ${productId} from cart ${customerId}`, "success");
+    form.reset();
+    await refreshCartAndItems(customerId);
+  } catch (error) {
+    showAlert(error.message, "error");
+  }
+};
+
+const handleItemList = async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const customerId = Number(getFieldValue(form, "customerId"));
+  if (!customerId) {
+    showAlert("Customer ID is required", "error");
+    return;
+  }
+  try {
+    const items = await apiRequest(`/${customerId}/items`);
+    renderItemsTable(items);
+    showAlert(`Listed items for cart ${customerId}`, "info");
+  } catch (error) {
+    showAlert(error.message, "error");
+    renderItemsTable([]);
+  }
+};
+
+const handleItemRead = async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const customerId = Number(getFieldValue(form, "customerId"));
+  const productId = Number(getFieldValue(form, "productId"));
+  if (!customerId || !productId) {
+    showAlert("Customer ID and Product ID are required", "error");
+    return;
+  }
+  try {
+    const item = await apiRequest(`/${customerId}/items/${productId}`);
+    renderItemsTable([item]);
+    showAlert(`Fetched item ${productId} for cart ${customerId}`, "info");
+  } catch (error) {
+    showAlert(error.message, "error");
+    renderItemsTable([]);
+  }
+};
+
+const bindItemForms = () => {
+  if (itemForms.add) itemForms.add.addEventListener("submit", handleItemAdd);
+  if (itemForms.update)
+    itemForms.update.addEventListener("submit", handleItemUpdate);
+  if (itemForms.delete)
+    itemForms.delete.addEventListener("submit", handleItemDelete);
+  if (itemForms.list) itemForms.list.addEventListener("submit", handleItemList);
+  if (itemForms.read) itemForms.read.addEventListener("submit", handleItemRead);
+};
+
 forms.create.addEventListener("submit", handleCreate);
 forms.update.addEventListener("submit", handleUpdate);
 forms.read.addEventListener("submit", handleRead);
@@ -483,5 +654,6 @@ if (listResetFilterBtn) {
   listResetFilterBtn.addEventListener("click", handleListResetFilter);
 }
 
+bindItemForms();
 clearAlert();
 refreshList();
