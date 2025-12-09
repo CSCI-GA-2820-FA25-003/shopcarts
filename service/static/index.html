@@ -264,6 +264,133 @@
         </div>
       </section>
 
+      <section id="panel-items" class="panel panel--items" data-label="Items">
+        <div class="panel-heading">
+          <div>
+            <h2>Manage items</h2>
+            <p>Add, update, or remove items within a shopcart.</p>
+          </div>
+        </div>
+        <div class="form-grid three-column">
+          <form id="item-add-form" class="form-card">
+            <header>
+              <h3>Add item</h3>
+              <p>POST /api/shopcarts/&lt;customer_id&gt;/items</p>
+            </header>
+            <label>
+              Customer ID
+              <input type="number" name="customerId" min="1" required placeholder="e.g. 101" />
+            </label>
+            <label>
+              Product ID
+              <input type="number" name="productId" min="1" required placeholder="e.g. 501" />
+            </label>
+            <label>
+              Quantity
+              <input type="number" name="quantity" min="1" required placeholder="e.g. 2" />
+            </label>
+            <label>
+              Price
+              <input type="number" step="0.01" min="0" name="price" required placeholder="e.g. 9.99" />
+            </label>
+            <label>
+              Description (optional)
+              <input type="text" name="description" maxlength="200" placeholder="Eco mug" />
+            </label>
+            <button type="submit">Add Item</button>
+          </form>
+
+          <form id="item-update-form" class="form-card">
+            <header>
+              <h3>Update item</h3>
+              <p>PUT /api/shopcarts/&lt;customer_id&gt;/items/&lt;product_id&gt;</p>
+            </header>
+            <label>
+              Customer ID
+              <input type="number" name="customerId" min="1" required placeholder="e.g. 101" />
+            </label>
+            <label>
+              Product ID
+              <input type="number" name="productId" min="1" required placeholder="e.g. 501" />
+            </label>
+            <label>
+              Quantity (0 deletes)
+              <input type="number" name="quantity" min="0" placeholder="e.g. 3" />
+            </label>
+            <label>
+              Price (optional)
+              <input type="number" step="0.01" min="0" name="price" placeholder="e.g. 12.00" />
+            </label>
+            <label>
+              Description (optional)
+              <input type="text" name="description" maxlength="200" placeholder="New description" />
+            </label>
+            <button type="submit">Update Item</button>
+          </form>
+
+          <form id="item-delete-form" class="form-card">
+            <header>
+              <h3>Delete item</h3>
+              <p>DELETE /api/shopcarts/&lt;customer_id&gt;/items/&lt;product_id&gt;</p>
+            </header>
+            <label>
+              Customer ID
+              <input type="number" name="customerId" min="1" required placeholder="e.g. 101" />
+            </label>
+            <label>
+              Product ID
+              <input type="number" name="productId" min="1" required placeholder="e.g. 501" />
+            </label>
+            <button type="submit">Delete Item</button>
+          </form>
+
+          <form id="item-read-form" class="form-card">
+            <header>
+              <h3>Read item</h3>
+              <p>GET /api/shopcarts/&lt;customer_id&gt;/items/&lt;product_id&gt;</p>
+            </header>
+            <label>
+              Customer ID
+              <input type="number" name="customerId" min="1" required placeholder="e.g. 101" />
+            </label>
+            <label>
+              Product ID
+              <input type="number" name="productId" min="1" required placeholder="e.g. 501" />
+            </label>
+            <button type="submit">Fetch Item</button>
+          </form>
+
+          <form id="item-list-form" class="form-card">
+            <header>
+              <h3>List items</h3>
+              <p>GET /api/shopcarts/&lt;customer_id&gt;/items</p>
+            </header>
+            <label>
+              Customer ID
+              <input type="number" name="customerId" min="1" required placeholder="e.g. 101" />
+            </label>
+            <button type="submit">List Items</button>
+          </form>
+        </div>
+        <div class="table-wrapper">
+          <table id="item-table">
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>Description</th>
+                <th>Qty</th>
+                <th>Price</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td colspan="4" class="empty">Items will appear after a fetch.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <section id="panel-actions" class="panel panel--danger" data-label="Delete & Action">
         <div class="panel-heading">
           <div>
