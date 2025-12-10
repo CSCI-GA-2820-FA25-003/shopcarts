@@ -798,7 +798,7 @@ class ReactivateResource(Resource):
         return shopcart.serialize(), status.HTTP_200_OK
 
 
-@ns.route("/<int:customer_id>/items")
+@ns.route("/<int:customer_id>/items", doc=False)
 @ns.response(status.HTTP_404_NOT_FOUND, "Shopcart not found", message_model)
 class ShopcartItemsCollectionResource(Resource):
     """Manage items within a shopcart."""
@@ -863,7 +863,7 @@ class ShopcartItemsCollectionResource(Resource):
             abort(e.status_code, message=e.message)
 
 
-@ns.route("/<int:customer_id>/items/<int:product_id>")
+@ns.route("/<int:customer_id>/items/<int:product_id>", doc=False)
 @ns.response(status.HTTP_404_NOT_FOUND, "Shopcart not found", message_model)
 class ShopcartItemResource(Resource):
     """Manage a specific item within a shopcart."""

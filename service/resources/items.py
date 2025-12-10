@@ -34,7 +34,9 @@ except ImportError:  # pragma: no cover
 
 # Create a namespace for items
 api = Namespace(
-    "items", description="Item operations", path="/shopcarts/<int:shopcart_id>/items"
+    "items",
+    description="Item operations",
+    path="/shopcarts/<int:customer_id>/items",
 )
 
 ######################################################################
@@ -342,7 +344,7 @@ def _parse_item_filters(args) -> ItemFilters:
 
 
 @api.route("")
-@api.param("shopcart_id", "The Shopcart identifier")
+@api.param("customer_id", "The customer identifier")
 class ItemCollection(Resource):
     """Handles all operations for a collection of Items"""
 
@@ -359,19 +361,19 @@ class ItemCollection(Resource):
     @api.marshal_list_with(item_model, code=status.HTTP_200_OK)
     @api.response(404, "Shopcart not found", message_model)
     @api.response(400, "Bad Request", message_model)
-    def get(self, shopcart_id):
+    def get(self, customer_id):
         """List all items in a shopcart with optional filters"""
-        app.logger.info(f"Request to list all items in shopcart {shopcart_id}")
+        app.logger.info(f"Request to list all items in shopcart for customer {customer_id}")
 
         # Find the shopcart by ID (try both shopcart.id and customer_id)
-        shopcart = Shopcart.find(shopcart_id)
+        shopcart = Shopcart.find(customer_id)
         if not shopcart:
             # Try finding by customer_id in case the route was matched incorrectly
-            shopcart = Shopcart.find_by_customer_id(shopcart_id).first()
+            shopcart = Shopcart.find_by_customer_id(customer_id).first()
         if not shopcart:
             abort(
                 status.HTTP_404_NOT_FOUND,
-                f"Shopcart with id '{shopcart_id}' was not found.",
+                f"Shopcart for customer '{customer_id}' was not found.",
             )
 
         filters = _parse_item_filters(request.args)
@@ -408,19 +410,19 @@ class ItemCollection(Resource):
     @api.response(400, "Bad Request", message_model)
     @api.response(404, "Shopcart not found", message_model)
     @api.response(500, "Internal Server Error", message_model)
-    def post(self, shopcart_id):
+    def post(self, customer_id):
         """Add an Item to a Shopcart"""
-        app.logger.info("Request to add item to shopcart %s", shopcart_id)
+        app.logger.info("Request to add item to shopcart for customer %s", customer_id)
 
         # Find the shopcart by ID (try both shopcart.id and customer_id)
-        shopcart = Shopcart.find(shopcart_id)
+        shopcart = Shopcart.find(customer_id)
         if not shopcart:
             # Try finding by customer_id in case the route was matched incorrectly
-            shopcart = Shopcart.find_by_customer_id(shopcart_id).first()
+            shopcart = Shopcart.find_by_customer_id(customer_id).first()
         if not shopcart:
             abort(
                 status.HTTP_404_NOT_FOUND,
-                f"Shopcart with id '{shopcart_id}' was not found.",
+                f"Shopcart for customer '{customer_id}' was not found.",
             )
 
         payload = request.get_json() or {}
@@ -458,7 +460,7 @@ class ItemCollection(Resource):
 
 
 @api.route("/<int:item_id>")
-@api.param("shopcart_id", "The Shopcart identifier")
+@api.param("customer_id", "The customer identifier")
 @api.param("item_id", "The Item identifier")
 class ItemResource(Resource):
     """Handles all operations for a single Item"""
@@ -516,19 +518,19 @@ class ItemResource(Resource):
     @api.doc("get_item")
     @api.marshal_with(item_model, code=status.HTTP_200_OK)
     @api.response(404, "Shopcart or Item not found", message_model)
-    def get(self, shopcart_id, item_id):
+    def get(self, customer_id, item_id):
         """Read an item from a shopcart"""
-        app.logger.info(f"Request to read item {item_id} from shopcart {shopcart_id}")
+        app.logger.info(f"Request to read item {item_id} from shopcart for customer {customer_id}")
 
         # Find the shopcart by ID (try both shopcart.id and customer_id)
-        shopcart = Shopcart.find(shopcart_id)
+        shopcart = Shopcart.find(customer_id)
         if not shopcart:
             # Try finding by customer_id in case the route was matched incorrectly
-            shopcart = Shopcart.find_by_customer_id(shopcart_id).first()
+            shopcart = Shopcart.find_by_customer_id(customer_id).first()
         if not shopcart:
             abort(
                 status.HTTP_404_NOT_FOUND,
-                f"Shopcart with id '{shopcart_id}' was not found.",
+                f"Shopcart for customer '{customer_id}' was not found.",
             )
 
         # Find the item by ID (try both item.id and product_id)
@@ -549,7 +551,7 @@ class ItemResource(Resource):
         if item.shopcart_id != shopcart.id:
             abort(
                 status.HTTP_404_NOT_FOUND,
-                f"Item with id '{item_id}' not found in shopcart '{shopcart_id}'.",
+                f"Item with id '{item_id}' not found in shopcart for customer '{customer_id}'.",
             )
 
         return item.serialize(), status.HTTP_200_OK
@@ -560,36 +562,36 @@ class ItemResource(Resource):
     @api.response(400, "Bad Request", message_model)
     @api.response(404, "Shopcart or Item not found", message_model)
     @api.response(409, "Conflict", message_model)
-    def put(self, shopcart_id, item_id):
+    def put(self, customer_id, item_id):
         """Update an item in a shopcart"""
-        app.logger.info(f"Request to update item {item_id} in shopcart {shopcart_id}")
+        app.logger.info(f"Request to update item {item_id} in shopcart for customer {customer_id}")
 
         # Check if shopcart_id is actually a customer_id (by checking if it matches a customer_id)
         # If so, delegate to the shopcarts route handler logic
-        shopcart_by_customer = Shopcart.find_by_customer_id(shopcart_id).first()
-        if shopcart_by_customer and shopcart_by_customer.customer_id == shopcart_id:
+        shopcart_by_customer = Shopcart.find_by_customer_id(customer_id).first()
+        if shopcart_by_customer and shopcart_by_customer.customer_id == customer_id:
             return self._handle_customer_id_route_update(shopcart_by_customer, item_id)
 
-        shopcart, item = _validate_shopcart_and_item(shopcart_id, item_id)
+        shopcart, item = _validate_shopcart_and_item(customer_id, item_id)
         payload = request.get_json() or {}
         return self._handle_shopcart_id_route_update(shopcart, item, payload)
 
     @api.doc("delete_item")
     @api.response(204, "Item deleted successfully")
     @api.response(404, "Shopcart or Item not found", message_model)
-    def delete(self, shopcart_id, item_id):
+    def delete(self, customer_id, item_id):
         """Delete an existing item from a shopcart"""
-        app.logger.info(f"Request to delete item {item_id} from shopcart {shopcart_id}")
+        app.logger.info(f"Request to delete item {item_id} from shopcart for customer {customer_id}")
 
         # Find the shopcart by ID (try both shopcart.id and customer_id)
-        shopcart = Shopcart.find(shopcart_id)
+        shopcart = Shopcart.find(customer_id)
         if not shopcart:
             # Try finding by customer_id in case the route was matched incorrectly
-            shopcart = Shopcart.find_by_customer_id(shopcart_id).first()
+            shopcart = Shopcart.find_by_customer_id(customer_id).first()
         if not shopcart:
             abort(
                 status.HTTP_404_NOT_FOUND,
-                f"Shopcart with id '{shopcart_id}' was not found.",
+                f"Shopcart for customer '{customer_id}' was not found.",
             )
 
         # Find the item by ID (try both item.id and product_id)
@@ -610,7 +612,7 @@ class ItemResource(Resource):
         if item.shopcart_id != shopcart.id:
             abort(
                 status.HTTP_404_NOT_FOUND,
-                f"Item with id '{item_id}' not found in shopcart '{shopcart_id}'.",
+                f"Item with id '{item_id}' not found in shopcart for customer '{customer_id}'.",
             )
 
         # Remove the item and persist
