@@ -18,7 +18,7 @@ Core service routes that are not part of the RESTX API namespace.
 """
 # pylint: disable=unused-import
 
-from flask import abort, jsonify, redirect, request
+from flask import abort, jsonify, request
 from flask import current_app as app  # Import Flask application
 
 from service.common import status
@@ -60,9 +60,9 @@ def health_check():
 def index():
     """Return service metadata, or redirect browsers to the UI."""
     accept = request.headers.get("Accept", "")
-    # If a browser hits "/" (Accept usually includes text/html), send it to the UI.
+    # If a browser hits "/" (Accept usually includes text/html), serve the UI directly.
     if "text/html" in accept.lower():  # pragma: no cover (convenience path for browsers)
-        return redirect("/ui", code=302)
+        return app.send_static_file("index.html")
 
     response = {
         "description": "This service manages customer shopcarts and their items.",
