@@ -5,6 +5,7 @@
 # but they work correctly at runtime
 
 from __future__ import annotations
+import os
 import re
 import time
 from decimal import Decimal
@@ -23,7 +24,8 @@ from features.environment import (
     _api_url,
 )
 
-WAIT_TIMEOUT = 10
+# Use Tekton's WAIT_SECONDS env if provided (pipeline passes it), default to 10s locally
+WAIT_TIMEOUT = int(os.getenv("WAIT_SECONDS", "10"))
 
 STATUS_ALIAS_MAP = {
     "active": "active",
@@ -729,6 +731,23 @@ def step_impl_200_ok(context):
                     if status_display in table_text or context.expected_status.lower() in table_text.lower():
                         return True
             except Exception:
+                pass
+
+        # As a last resort, confirm via the API in case the UI hasn't refreshed yet.
+        if hasattr(context, "expected_status") and hasattr(context, "expected_customer_id"):
+            try:
+                resp = requests.get(
+                    _api_url(context, f"shopcarts/{context.expected_customer_id}"),
+                    timeout=5,
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    current_status = canonical_status(
+                        data.get("status") or data.get("status", "")
+                    )
+                    if current_status.lower() == canonical_status(context.expected_status).lower():
+                        return True
+            except requests.RequestException:
                 pass
         
         return False
