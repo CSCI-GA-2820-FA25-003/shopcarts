@@ -4,6 +4,13 @@
 [![Python](https://img.shields.io/badge/Language-Python-blue.svg)](https://python.org/)
 [![Tekton Pipeline](https://img.shields.io/badge/Tekton-Pipeline-blue?logo=tekton&logoColor=white)](https://console-openshift-console.apps.os-cluster.example.com)
 
+## CI/CD at a glance
+- GitHub Actions (`.github/workflows/workflow.yml`) runs flake8 + pylint + pytest (coverage gate 100%) on every push/PR to `master`, and uploads coverage to Codecov (see badges above).
+- Tekton CD (`.tekton/pipeline.yaml`) mirrors the quality gates, builds the image with Buildah, deploys to OpenShift, then runs Behave UI tests against the live Route. Triggers/EventListener manifests live under `.tekton/events/`.
+- Behave respects `BASE_URL` and `WAIT_SECONDS`; the pipeline passes these so UI tests hit the freshly deployed Route and allow for slower clusters.
+- PostgreSQL must contain a `shopcarts` database. If missing, create once:  
+  `oc exec postgres-0 -- psql -U postgres -c "CREATE DATABASE shopcarts;"`
+
 # Shopcart REST API Service
 
 This project implements a Flask-based REST API for managing customer shopcarts and their items. It is the reference implementation used in the NYU DevOps course and extends the original project template with a working service, database models, and automated tests.
@@ -36,6 +43,8 @@ service/            - Flask service package
 │   ├── base.py     - Shared DB mixins and utilities
 │   ├── shopcart.py - Shopcart model definition
 │   └── shopcart_item.py - Shopcart item model
+├── resources/      - Flask-RESTX namespaces (shopcarts, items)
+├── static/         - Admin UI assets (`/ui`)
 └── common/         - Shared helpers and CLI commands
     ├── cli_commands.py  - Flask CLI to recreate tables
     ├── error_handlers.py - Custom JSON error responses
@@ -47,6 +56,10 @@ tests/              - Automated test suites
 ├── test_cli_commands.py - Tests for CLI utilities
 ├── test_models.py  - Tests for model behaviour
 └── test_routes.py  - Tests for REST API endpoints
+features/           - Behave BDD feature and step files (UI + API)
+k8s/                - Kubernetes manifests (app Service/Route/ConfigMap, Postgres StatefulSet)
+.tekton/            - Tekton pipeline, tasks, triggers, workspace definitions
+.github/workflows/  - GitHub Actions CI (lint + pytest + coverage)
 ```
 
 ## Local Setup
@@ -81,6 +94,37 @@ Choose one of the following:
 
 When the service starts you should see log output confirming the database tables were created and the server is accepting requests. A lightweight health probe is available at `GET /health`.
 
+## API Docs (Flask-RESTX)
+- The REST API is implemented with Flask-RESTX. Swagger UI is exposed at `/apidocs/`.  
+  - Local Flask: `http://127.0.0.1:5000/apidocs/`  
+  - `make run`: `http://127.0.0.1:8080/apidocs/`  
+  - OpenShift Route: `<your-route>/apidocs/`
+- Example requests (using curl):
+  - Create cart  
+    ```bash
+    curl -X POST http://127.0.0.1:8080/api/shopcarts \
+      -H "Content-Type: application/json" \
+      -d '{"customer_id":101,"name":"Summer Cart","status":"active"}'
+    ```
+    Response `201 Created`:
+    ```json
+    {
+      "id": 1,
+      "customer_id": 101,
+      "name": "Summer Cart",
+      "status": "active",
+      "items": [],
+      "total_items": 0,
+      "total_price": 0
+    }
+    ```
+  - List carts with filters  
+    `curl "http://127.0.0.1:8080/api/shopcarts?status=active&min_total=10&max_total=200"`
+  - Lock a cart (Action)  
+    `curl -X PATCH http://127.0.0.1:8080/api/shopcarts/101/lock`
+- Swagger screenshot:  
+  ![Swagger UI](https://raw.githubusercontent.com/swagger-api/swagger-ui/master/docs/assets/swagger_ui.png)
+
 ## Admin UI
 Requirement #80 adds a lightweight administrator console backed by the same REST API. Once the Flask app is running, open [`http://localhost:5000/ui`](http://localhost:5000/ui) (alias `/admin`) or, if you started the service via `make run`, [`http://localhost:8080/ui`](http://localhost:8080/ui). All buttons submit requests to the live endpoints, so you can drive the service exactly the way Selenium/Behave tests will.
 
@@ -107,7 +151,7 @@ The feature file `features/shopcarts.feature` exercises the full flow:
 - Querying the REST API by customer id, canonical statuses, and min/max totals—plus negative cases for invalid parameters.
 - UI-specific scenarios that drive the new filters, ensure the grid updates dynamically, validate bad ranges, and verify the **Clear Filters** reset behavior.
 
-Selenium downloads a headless Chrome driver via `webdriver-manager`. Ensure the UI remains accessible during the run; Behave only interacts with the service through the `/ui` page.
+Selenium downloads a headless Chrome driver via `webdriver-manager`. Ensure the UI remains accessible during the run; Behave only interacts with the service through the `/ui` page. Use `WAIT_SECONDS` to extend WebDriver timeouts (pipeline sets 60s; local default is 10s).
 
 ## Running Tests and Quality Checks
 - Unit tests with coverage: `make test` (or `pytest --pspec --cov=service --disable-warnings`)
