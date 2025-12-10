@@ -151,8 +151,7 @@
             <label>
               Status
               <select name="status">
-                <option value="">active (default)</option>
-                <option value="active">active</option>
+                <option value="active" selected>active (default)</option>
                 <option value="locked">locked</option>
                 <option value="abandoned">abandoned</option>
                 <option value="expired">expired</option>
@@ -226,16 +225,6 @@
               Customer ID (optional)
               <input type="number" name="customerId" min="1" />
             </label>
-              <label>
-                Status
-                <select name="status">
-                  <option value="">Any</option>
-                  <option value="active">active</option>
-                  <option value="abandoned">abandoned</option>
-                  <option value="locked">locked</option>
-                  <option value="expired">expired</option>
-                </select>
-              </label>
             <label>
               Status
               <select name="status" id="status-filter">
@@ -251,7 +240,7 @@
               <input type="number" step="0.01" min="0" name="totalPriceGt" />
             </label>
             <label>
-              Max Total
+              Total Price ≤
               <input type="number" step="0.01" min="0" name="maxTotal" />
             </label>
             <div class="button-row">

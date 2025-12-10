@@ -343,7 +343,7 @@ def _parse_item_filters(args) -> ItemFilters:
 ######################################################################
 
 
-@api.route("")
+@api.route("/")
 @api.param("customer_id", "The customer identifier")
 class ItemCollection(Resource):
     """Handles all operations for a collection of Items"""
