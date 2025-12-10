@@ -622,7 +622,7 @@ class ItemResource(Resource):
         app.logger.info(
             "Item %s deleted successfully from shopcart %s",
             item_id,
-            shopcart_id,
+            customer_id,
         )
 
         return "", status.HTTP_204_NO_CONTENT
