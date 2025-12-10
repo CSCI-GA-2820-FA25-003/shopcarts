@@ -476,7 +476,14 @@ def _filter_by_total_price(
     return filtered
 
 
-ITEM_FILTER_FIELDS = {"description", "product_id", "min_price", "max_price", "quantity"}
+ITEM_FILTER_FIELDS = {
+    "description",
+    "product_id",
+    "min_price",
+    "max_price",
+    "quantity",
+    "status",
+}
 
 
 @dataclass
@@ -488,6 +495,7 @@ class ItemFilters:
     min_price: Decimal | None = None
     max_price: Decimal | None = None
     quantity: int | None = None
+    status: str | None = None
 
 
 def _parse_price_bound(value: str, field: str) -> Decimal:
@@ -563,6 +571,9 @@ def _parse_item_filters(args) -> ItemFilters:
             status.HTTP_400_BAD_REQUEST,
             "min_price must be less than or equal to max_price",
         )
+
+    # Status filter applies to shopcart, not item
+    filters.status = args.get("status")
 
     return filters
 
@@ -803,7 +814,7 @@ class ReactivateResource(Resource):
 class ShopcartItemsCollectionResource(Resource):
     """Manage items within a shopcart."""
 
-    @ns.expect(shopcart_item_payload, validate=True)
+    @ns.expect(shopcart_item_payload, validate=False)
     @ns.marshal_with(shopcart_item_model, code=status.HTTP_201_CREATED)
     def post(self, customer_id):
         """Add an item to a shopcart."""
@@ -852,6 +863,11 @@ class ShopcartItemsCollectionResource(Resource):
         try:
             shopcart = _find_shopcart_by_id_or_customer(customer_id)
             filters = _parse_item_filters(request.args)
+            if filters.status is not None:
+                status_norm = str(filters.status).strip().lower()
+                cart_status = (shopcart.status or "").strip().lower()
+                if status_norm != cart_status:
+                    return [], status.HTTP_200_OK
             query = ShopcartItem.find_by_shopcart_id(shopcart.id)
             query = _apply_item_filters(query, filters)
             items = query.order_by(ShopcartItem.id).all()
@@ -900,7 +916,7 @@ class ShopcartItemResource(Resource):
         except ValidationError as e:
             abort(e.status_code, message=e.message)
 
-    @ns.expect(shopcart_item_payload, validate=True)
+    @ns.expect(shopcart_item_payload, validate=False)
     @ns.marshal_with(shopcart_model)
     @ns.response(
         status.HTTP_409_CONFLICT, "Cart status does not allow updates", message_model
@@ -951,7 +967,7 @@ class ShopcartItemResource(Resource):
         _update_shopcart_item(shopcart, current, q, price, desc)
         return _get_update_response(shopcart, product_id, is_item_id)
 
-    @ns.expect(shopcart_item_payload, validate=True)
+    @ns.expect(shopcart_item_payload, validate=False)
     @ns.marshal_with(shopcart_model)
     @ns.response(
         status.HTTP_409_CONFLICT, "Cart status does not allow updates", message_model
