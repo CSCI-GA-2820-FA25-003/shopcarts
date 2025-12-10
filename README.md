@@ -2,6 +2,7 @@
 [![codecov](https://codecov.io/gh/CSCI-GA-2820-FA25-003/shopcarts/graph/badge.svg?token=9AM1PN2UYK)](https://codecov.io/gh/CSCI-GA-2820-FA25-003/shopcarts)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Python](https://img.shields.io/badge/Language-Python-blue.svg)](https://python.org/)
+[![Tekton Pipeline](https://img.shields.io/badge/Tekton-Pipeline-blue?logo=tekton&logoColor=white)](https://console-openshift-console.apps.os-cluster.example.com)
 
 # Shopcart REST API Service
 
