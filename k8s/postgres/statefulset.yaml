@@ -13,11 +13,17 @@ spec:
       labels:
         app: postgres
     spec:
+      securityContext:
+        fsGroup: 1008140000
+        fsGroupChangePolicy: OnRootMismatch
       containers:
       - name: postgres
         image: postgres:14-alpine
         ports:
         - containerPort: 5432
+        env:
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
         envFrom:
         - configMapRef:
             name: postgres-config
