@@ -11,7 +11,7 @@ spec:
       description: The reference (branch or ref)
       name: GIT_REF
       type: string
-    - default: petshop
+    - default: shopcarts
       description: Name of the application
       name: APP_NAME
       type: string
@@ -87,7 +87,7 @@ spec:
         - name: pytest-args
           value: []
         - name: secret-name
-          value: postgres-creds
+          value: postgres-secret
         - name: secret-key
           value: database_uri
       runAfter:
@@ -155,7 +155,7 @@ spec:
     - name: behave
       params:
         - name: base-url
-          value: 'https://petshop-cicyyy-dev.apps.rm3.7wse.p1.openshiftapps.com'
+          value: 'https://shopcarts-clearlovezc-dev.apps.rm3.7wse.p1.openshiftapps.com/'
         - name: wait-seconds
           value: '60'
         - name: driver
